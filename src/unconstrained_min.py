@@ -1,8 +1,8 @@
 from abc import abstractmethod, ABC
+
 import numpy as np
 
 from src.common import Function
-from src.utils import plot_function_and_paths, plot_objective_vs_iterations
 
 
 class Minimizer(ABC):

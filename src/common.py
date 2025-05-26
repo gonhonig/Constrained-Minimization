@@ -1,10 +1,8 @@
 from abc import ABC, abstractmethod
 
-
 class Function(ABC):
-    def __init__(self, name, is_quadratic):
+    def __init__(self, name):
         self.name = name
-        self.is_quadratic = is_quadratic
 
     def eval(self, x):
         return self.y(x), self.g(x), self.h(x)

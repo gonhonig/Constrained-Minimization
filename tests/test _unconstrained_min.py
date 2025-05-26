@@ -2,11 +2,9 @@ import unittest
 
 import numpy as np
 
-from src.common import Function
 from src.unconstrained_min import GD, Newton
 from src.utils import plot_function_and_paths, plot_objective_vs_iterations
 from tests import examples
-
 
 x0 = np.array([1, 1])
 obj_tol = 1e-8
@@ -59,7 +57,7 @@ class TestMinimizers(unittest.TestCase):
         self.assertTrue(self.solve_and_plot())
 
     def test_linear(self):
-        self.f = examples.Linear([-1,2], "Linear")
+        self.f = examples.linear
         self.x0 = x0
         self.max_iter = max_iter
         self.assertTrue(self.solve_and_plot())

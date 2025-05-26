@@ -5,7 +5,7 @@ from src.common import Function
 
 class Quadratic(Function):
     def __init__(self, Q, name):
-        super().__init__(name, is_quadratic=True)
+        super().__init__(name)
         self.Q = np.asarray(Q)
 
     def y(self, x):
@@ -20,7 +20,7 @@ class Quadratic(Function):
 
 class Linear(Function):
     def __init__(self, a, name):
-        super().__init__(name, is_quadratic=False)
+        super().__init__(name)
         self.a = np.asarray(a)
 
     def y(self, x):
@@ -32,17 +32,10 @@ class Linear(Function):
     def h(self, x):
         return None
 
-circle = Quadratic([[1, 0],[0, 1]], "Circle")
-ellipses = Quadratic([[1, 0],[0, 100]], "Ellipses")
-
-A = np.array([[np.sqrt(3) / 2, -0.5], [0.5, np.sqrt(3) / 2]])
-B = np.array([[100, 0], [0, 1]])
-
-rotated_ellipses = Quadratic(A.T @ B @ A, "Rotated Ellipses")
 
 class Rosenbrock(Function):
     def __init__(self):
-        super().__init__(Rosenbrock.__name__, is_quadratic=True)
+        super().__init__(Rosenbrock.__name__)
 
     def y(self, x):
         return 100 * (x[1] - x[0] ** 2) ** 2 + (1 - x[0]) ** 2
@@ -58,7 +51,7 @@ class Rosenbrock(Function):
 
 class SumOfExponents(Function):
     def __init__(self):
-        super().__init__("Sum Of Exponents", is_quadratic=True)
+        super().__init__("Sum Of Exponents")
 
     def get_exponents(self, x):
         x1, x2 = x
@@ -91,3 +84,11 @@ class SumOfExponents(Function):
             [d2f_dx1dx1, d2f_dx1dx2],
             [d2f_dx1dx2, d2f_dx2dx2]
         ])
+
+A = np.array([[np.sqrt(3) / 2, -0.5], [0.5, np.sqrt(3) / 2]])
+B = np.array([[100, 0], [0, 1]])
+
+circle = Quadratic([[1, 0],[0, 1]], "Circle")
+ellipses = Quadratic([[1, 0],[0, 100]], "Ellipses")
+rotated_ellipses = Quadratic(A.T @ B @ A, "Rotated Ellipses")
+linear = Linear([-1,2], "Linear")
