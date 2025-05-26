@@ -1,40 +1,21 @@
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 import numpy as np
 
-from src.common import Function, Minimizer
+from src.common import Function
 from src.utils import plot_function_and_paths, plot_objective_vs_iterations
 
 
-class MinimizerWrapper():
-    def __init__(self, obj_tol, param_tol, max_iter, wolfe_const, backtracking_const):
-        self.f = None
-        self.GD = GD(obj_tol, param_tol, max_iter, wolfe_const, backtracking_const)
-        self.Newton = Newton(obj_tol, param_tol, max_iter, wolfe_const, backtracking_const)
-
-    def solve(self, f: Function, x0):
-        self.f = f
-        gd = self.GD.solve(f, x0)
-        newton = self.Newton.solve(f, x0)
-        print(f"[GD]: {'success' if gd[2] else 'failure'} | x: {gd[0]} | y: {gd[1]}")
-        print(f"[NT]: {'success' if newton[2] else 'failure'} | x: {newton[0]} | y: {newton[1]}")
-
-    def plot(self):
-        plot_function_and_paths([self.GD, self.Newton], self.f)
-        plot_objective_vs_iterations([self.GD, self.Newton], self.f)
-
-
-class MinimizerBase(Minimizer):
-    def __init__(self, obj_tol, param_tol, max_iter, wolfe_const, backtracking_const):
+class Minimizer(ABC):
+    def __init__(self, obj_tol, param_tol, wolfe_const, backtracking_const):
         self.f = None
         self.obj_tol = obj_tol
         self.param_tol = param_tol
-        self.max_iter = max_iter
         self.wolfe_const = wolfe_const
         self.backtracking_const = backtracking_const
         self.history = None
         self.success = False
 
-    def solve(self, f: Function, x0):
+    def solve(self, f: Function, x0, max_iter):
         print(f"Solving {f.name} using {self.__class__.__name__} minimizer...")
         self.history = []
         self.f = f
@@ -43,8 +24,9 @@ class MinimizerBase(Minimizer):
         y = None
         self.success = False
 
-        while i < self.max_iter:
+        while i < max_iter:
             y, g, h = self.f.eval(x)
+
             self.history.append(np.append(x, y))
             print(f"[{i}] x: {x}, y: {y}")
 
@@ -52,6 +34,12 @@ class MinimizerBase(Minimizer):
                 break
 
             p = self.next_direction(x, y, g, h)
+
+            if p is None:
+                print(f"Can't solve {f.name} using {self.__class__.__name__} minimizer!")
+                self.success = False
+                break
+
             alpha = self.next_step_size(x, p)
             x_next = x + alpha * p
 
@@ -83,17 +71,17 @@ class MinimizerBase(Minimizer):
         pass
 
 
-class GD(MinimizerBase):
+class GD(Minimizer):
     def next_direction(self, x, y, g, h):
-        return -g
+        return None if g is None else -g
 
     def should_terminate(self, x, x_next, y, g, h, p):
         return np.linalg.norm(y - self.f.y(x_next)) < self.obj_tol
 
 
-class Newton(MinimizerBase):
+class Newton(Minimizer):
     def next_direction(self, x, y, g, h):
-        return np.linalg.solve(h, -g)
+        return None if h is None else np.linalg.solve(h, -g)
 
     def should_terminate(self, x, x_next, y, g, h, p):
         return 0.5 * p.T @ h @ p < self.obj_tol

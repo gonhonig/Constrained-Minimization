@@ -17,12 +17,12 @@ backtracking_const = 0.5
 
 class TestMinimizers(unittest.TestCase):
     def setUp(self):
-        self.GD = GD(obj_tol, param_tol, max_iter, wolfe_const, backtracking_const)
-        self.Newton = Newton(obj_tol, param_tol, max_iter, wolfe_const, backtracking_const)
+        self.GD = GD(obj_tol, param_tol, wolfe_const, backtracking_const)
+        self.Newton = Newton(obj_tol, param_tol, wolfe_const, backtracking_const)
 
     def solve_and_plot(self):
-        self.GD.solve(self.f, self.x0)
-        self.Newton.solve(self.f, self.x0)
+        self.GD.solve(self.f, self.x0, self.max_iter)
+        self.Newton.solve(self.f, self.x0, self.max_iter)
         plot_function_and_paths([self.GD, self.Newton], self.f)
         plot_objective_vs_iterations([self.GD, self.Newton], self.f)
 
@@ -31,16 +31,37 @@ class TestMinimizers(unittest.TestCase):
     def test_circle(self):
         self.f = examples.circle
         self.x0 = x0
+        self.max_iter = max_iter
         self.assertTrue(self.solve_and_plot())
 
     def test_ellipses(self):
         self.f = examples.ellipses
         self.x0 = x0
+        self.max_iter = max_iter
         self.assertTrue(self.solve_and_plot())
 
     def test_rotated_ellipses(self):
         self.f = examples.rotated_ellipses
         self.x0 = x0
+        self.max_iter = max_iter
+        self.assertTrue(self.solve_and_plot())
+
+    def test_rosenbrock(self):
+        self.f = examples.Rosenbrock()
+        self.x0 = np.array([-1, 2])
+        self.max_iter = 10000
+        self.assertTrue(self.solve_and_plot())
+
+    def test_sum_of_exponents(self):
+        self.f = examples.SumOfExponents()
+        self.x0 = x0
+        self.max_iter = max_iter
+        self.assertTrue(self.solve_and_plot())
+
+    def test_linear(self):
+        self.f = examples.Linear([-1,2], "Linear")
+        self.x0 = x0
+        self.max_iter = max_iter
         self.assertTrue(self.solve_and_plot())
 
 
