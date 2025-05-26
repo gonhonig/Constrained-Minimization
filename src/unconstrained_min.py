@@ -2,7 +2,7 @@ from abc import abstractmethod
 import numpy as np
 
 from src.common import Function, Minimizer
-from src.utils import plot_function_and_path
+from src.utils import plot_function_and_paths, plot_objective_vs_iterations
 
 
 class MinimizerWrapper():
@@ -19,7 +19,8 @@ class MinimizerWrapper():
         print(f"[NT]: {'success' if newton[2] else 'failure'} | x: {newton[0]} | y: {newton[1]}")
 
     def plot(self):
-        plot_function_and_path([self.GD, self.Newton], self.f)
+        plot_function_and_paths([self.GD, self.Newton], self.f)
+        plot_objective_vs_iterations([self.GD, self.Newton], self.f)
 
 
 class MinimizerBase(Minimizer):
@@ -34,7 +35,7 @@ class MinimizerBase(Minimizer):
         self.success = False
 
     def solve(self, f: Function, x0):
-        print(f"Solving using {self.__class__.__name__} minimizer...")
+        print(f"Solving {f.name} using {self.__class__.__name__} minimizer...")
         self.history = []
         self.f = f
         i = 0
