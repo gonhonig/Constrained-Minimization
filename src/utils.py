@@ -1,0 +1,41 @@
+from math import floor
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_function_and_path(minimizers, f):
+    N = 100
+    total_history = [m.history for m in minimizers]
+    total_history = np.concatenate(total_history)
+    left = np.floor(np.min(total_history[:,0]))
+    right = np.ceil(np.max(total_history[:,0]))
+    bottom = np.floor(np.min(total_history[:,1]))
+    top = np.ceil(np.max(total_history[:,1]))
+    x_buffer = 0.1 * (right - left)
+    y_buffer = 0.1 * (top - bottom)
+    x = np.linspace(left - x_buffer, right + x_buffer, N)
+    y = np.linspace(bottom - y_buffer, top + y_buffer, N)
+    X, Y = np.meshgrid(x, y)
+    XY = np.stack([X, Y], axis=-1)
+    Z = np.zeros((N, N))
+
+    for i in range(N):
+        for j in range(N):
+            Z[i, j] = f.y(XY[i, j])
+
+    plt.contour(X, Y, Z, levels=20, cmap='viridis')
+    plt.colorbar(label='f(x)')
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+    plt.title(f.name)
+
+    i = 0
+    for minimizer in minimizers:
+        xs = minimizer.history[:,0]
+        ys = minimizer.history[:,1]
+        plt.plot(xs, ys, 'o--', color=f'C{i % 10}', label=minimizer.__class__.__name__)
+        plt.plot(xs[-1], ys[-1], '*', color=f'C{2 if minimizer.success else 3}')
+        i += 1
+
+    plt.legend()
+    plt.show()
