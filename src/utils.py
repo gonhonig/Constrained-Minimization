@@ -1,6 +1,7 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+from prettytable import PrettyTable
 
 
 def plot_function_and_paths(solvers, f, limits=None):
@@ -79,3 +80,14 @@ def plot_objective_vs_iterations(solvers, f):
     plt.legend()
     plt.savefig(f'./plots/{title}.png')
     plt.close()
+
+
+def print_table(solvers):
+    headers = ["Iterations", "x", "y", "Status"]
+    rows = [[r[1], r[2], r[3], "Success" if r[4] else f"Failure: {"max_iter" if r[5] else f"can't solve"}"] for r in solvers]
+    transposed = list(zip(*([headers] + rows)))
+    table = PrettyTable()
+    table.field_names = ["Solver"] + [r[0] for r in solvers]
+    for row in transposed:
+        table.add_row(row)
+    print(f"\n{table}\n")

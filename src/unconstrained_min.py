@@ -15,7 +15,8 @@ class Solver(ABC):
         self.is_valid = True
 
     def solve(self, f: Function, x0, max_iter):
-        print(f"Solving {f.name} using {self.__class__.__name__} solver...")
+        name = self.__class__.__name__
+        print(f"\nSolving {f.name} using {name} solver...")
         self.history = []
         self.f = f
         i = 0
@@ -28,7 +29,7 @@ class Solver(ABC):
             y, g, h = self.f.eval(x)
 
             self.history.append(np.append(x, y))
-            print(f"[{i}] x: {x}, y: {y}")
+            print(f"[{name}:{i}] x: {x}, y: {y}")
 
             if self.success:
                 break
@@ -36,7 +37,6 @@ class Solver(ABC):
             p = self.next_direction(x, y, g, h)
 
             if p is None:
-                print(f"Can't solve {f.name} using {self.__class__.__name__} solver!")
                 self.success = False
                 self.is_valid = False
                 break
@@ -51,9 +51,9 @@ class Solver(ABC):
             i += 1
 
         self.history = np.asarray(self.history)
-        print()
+        i -= 0 if self.success else 1
 
-        return x, y, self.success
+        return name, i, x, y, self.success, self.is_valid
 
     def next_step_size(self, x, p):
         alpha = 1

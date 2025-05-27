@@ -3,8 +3,9 @@ import unittest
 import numpy as np
 
 from src.unconstrained_min import GD, Newton
-from src.utils import plot_function_and_paths, plot_objective_vs_iterations
+from src.utils import plot_function_and_paths, plot_objective_vs_iterations, print_table
 from tests import examples
+from prettytable import PrettyTable
 
 x0 = np.array([1, 1])
 obj_tol = 1e-8
@@ -19,10 +20,11 @@ class TestSolvers(unittest.TestCase):
         self.Newton = Newton(obj_tol, param_tol, wolfe_const, backtracking_const)
 
     def solve_and_plot(self):
-        self.GD.solve(self.f, self.x0, self.max_iter)
-        self.Newton.solve(self.f, self.x0, self.max_iter)
+        gd = self.GD.solve(self.f, self.x0, self.max_iter)
+        nt = self.Newton.solve(self.f, self.x0, self.max_iter)
         plot_function_and_paths([self.GD, self.Newton], self.f)
         plot_objective_vs_iterations([self.GD, self.Newton], self.f)
+        print_table([gd, nt])
 
         return True
 
