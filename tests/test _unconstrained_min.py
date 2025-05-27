@@ -13,7 +13,7 @@ max_iter = 100
 wolfe_const = 0.01
 backtracking_const = 0.5
 
-class TestMinimizers(unittest.TestCase):
+class TestSolvers(unittest.TestCase):
     def setUp(self):
         self.GD = GD(obj_tol, param_tol, wolfe_const, backtracking_const)
         self.Newton = Newton(obj_tol, param_tol, wolfe_const, backtracking_const)

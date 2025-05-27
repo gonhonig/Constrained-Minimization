@@ -1,11 +1,9 @@
 from abc import abstractmethod, ABC
-
 import numpy as np
-
 from src.common import Function
 
 
-class Minimizer(ABC):
+class Solver(ABC):
     def __init__(self, obj_tol, param_tol, wolfe_const, backtracking_const):
         self.f = None
         self.obj_tol = obj_tol
@@ -14,17 +12,19 @@ class Minimizer(ABC):
         self.backtracking_const = backtracking_const
         self.history = None
         self.success = False
+        self.is_valid = True
 
     def solve(self, f: Function, x0, max_iter):
-        print(f"Solving {f.name} using {self.__class__.__name__} minimizer...")
+        print(f"Solving {f.name} using {self.__class__.__name__} solver...")
         self.history = []
         self.f = f
         i = 0
         x = x0
         y = None
         self.success = False
+        self.is_valid = True
 
-        while i < max_iter:
+        while i <= max_iter:
             y, g, h = self.f.eval(x)
 
             self.history.append(np.append(x, y))
@@ -36,8 +36,9 @@ class Minimizer(ABC):
             p = self.next_direction(x, y, g, h)
 
             if p is None:
-                print(f"Can't solve {f.name} using {self.__class__.__name__} minimizer!")
+                print(f"Can't solve {f.name} using {self.__class__.__name__} solver!")
                 self.success = False
+                self.is_valid = False
                 break
 
             alpha = self.next_step_size(x, p)
@@ -71,7 +72,7 @@ class Minimizer(ABC):
         pass
 
 
-class GD(Minimizer):
+class GD(Solver):
     def next_direction(self, x, y, g, h):
         return None if g is None else -g
 
@@ -79,7 +80,7 @@ class GD(Minimizer):
         return np.linalg.norm(y - self.f.y(x_next)) < self.obj_tol
 
 
-class Newton(Minimizer):
+class Newton(Solver):
     def next_direction(self, x, y, g, h):
         return None if h is None else np.linalg.solve(h, -g)
 

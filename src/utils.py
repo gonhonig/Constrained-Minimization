@@ -1,17 +1,15 @@
 import os
-
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def plot_function_and_paths(minimizers, f, limits=None):
+def plot_function_and_paths(solvers, f, limits=None):
     os.makedirs('./plots', exist_ok=True)
     N = 100
     left, top, right, bottom = (-2, 2, 2, -2) if limits is None else limits
 
-    if minimizers is not None:
-        total_history = [m.history for m in minimizers]
-        total_history = np.concatenate(total_history)
+    if solvers is not None:
+        total_history = np.concatenate([s.history for s in solvers if s.is_valid])
         left = np.min(total_history[:, 0])
         right = np.max(total_history[:, 0])
         bottom = np.min(total_history[:, 1])
@@ -36,16 +34,16 @@ def plot_function_and_paths(minimizers, f, limits=None):
     title = f'{f.name} - Function and Paths'
     plt.title(title)
 
-    if minimizers is not None:
+    if solvers is not None:
         i = 0
-        for minimizer in minimizers:
-            if minimizer.history.shape[0] < 2:
+        for solver in solvers:
+            if not solver.is_valid:
                 continue
 
-            xs = minimizer.history[:, 0]
-            ys = minimizer.history[:, 1]
-            plt.plot(xs, ys, 'o--', color=f'C{i % 10}', label=f"{minimizer.__class__.__name__} {'✔' if minimizer.success else '✖'}")
-            plt.plot(xs[-1], ys[-1], '*', color=f'C{2 if minimizer.success else 3}')
+            xs = solver.history[:, 0]
+            ys = solver.history[:, 1]
+            plt.plot(xs, ys, 'o--', color=f'C{i % 10}', label=f"{solver.__class__.__name__} {'✔' if solver.success else '✖'}")
+            plt.plot(xs[-1], ys[-1], '*', color=f'C{2 if solver.success else 3}')
             i += 1
 
     plt.legend()
@@ -53,20 +51,20 @@ def plot_function_and_paths(minimizers, f, limits=None):
     plt.close()
 
 
-def plot_objective_vs_iterations(minimizers, f):
+def plot_objective_vs_iterations(solvers, f):
     os.makedirs('./plots', exist_ok=True)
     i = 0
-    for minimizer in minimizers:
-        if minimizer.history.shape[0] < 2:
+    for solver in solvers:
+        if not solver.is_valid:
             continue
 
-        iterations = minimizer.history.shape[0]
+        iterations = solver.history.shape[0]
         xs = np.linspace(0, iterations, iterations)
-        ys = minimizer.history[:, -1]
-        plt.plot(xs, ys, '-', color=f'C{i % 10}', label=f"{minimizer.__class__.__name__} {'✔' if minimizer.success else '✖'}")
+        ys = solver.history[:, -1]
+        plt.plot(xs, ys, '-', color=f'C{i % 10}', label=f"{solver.__class__.__name__} {'✔' if solver.success else '✖'}")
         x_end = xs[-1].item()
         y_end = ys[-1].item()
-        color = f'C{2 if minimizer.success else 3}'
+        color = f'C{2 if solver.success else 3}'
         plt.plot(x_end, y_end, '*', color=color)
         ax = plt.gca()  # Get current axis
         ymin, ymax = ax.get_ylim()
