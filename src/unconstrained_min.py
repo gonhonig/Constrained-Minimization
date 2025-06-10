@@ -84,5 +84,6 @@ class GD(Solver):
         return None if g is None else -g
 
     def should_terminate(self, x, x_next, y, g, h, p):
-        return np.linalg.norm(y - self.f.y(x_next)) < self.obj_tol
+        y_next, _ , _ = self.f.eval(x_next)
+        return np.linalg.norm(y - y_next) < self.obj_tol
 

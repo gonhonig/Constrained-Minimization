@@ -50,10 +50,11 @@ class LogBarrierFunction(Function):
         self.x = None
 
     def eval(self, x):
-        y_ineq = np.array([ineq.y(x) for ineq in self.ineq_constraints])
-        g_ineq = np.array([ineq.g(x) for ineq in self.ineq_constraints])
-        h_ineq_list = np.array([ineq.h(x) for ineq in self.ineq_constraints])
-        h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2) + (h_ineq_list / -y_ineq)
+        eval_ineq = [ineq.eval(x) for ineq in self.ineq_constraints]
+        y_ineq = np.array([eval[0] for eval in eval_ineq])
+        g_ineq = np.array([eval[1] for eval in eval_ineq])
+        h_ineq = np.array([eval[2] for eval in eval_ineq])
+        h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2) + (h_ineq / -y_ineq)
         f_y, f_g, f_h = self.f.eval(x)
         y = self.t * f_y - np.sum(np.log(-y_ineq))
         g = self.t * f_g + np.sum(g_ineq / -y_ineq, axis=1)
@@ -92,7 +93,7 @@ class InteriorPointSolver:
 
         while m / t >= self.epsilon:
             f.set_t(t)
-            y = func.y(x)
+            y, _, _ = func.eval(x)
             history.append(np.append(x, y))
             if verbose:
                 print(f"[{i}] x: {x}, y: {y}")
@@ -101,7 +102,7 @@ class InteriorPointSolver:
             x = next_x
             i += 1
 
-        y = func.y(x)
+        y, _, _ = func.eval(x)
         history.append(np.append(x, y))
 
         return {

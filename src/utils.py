@@ -76,7 +76,8 @@ def plot_function(f, limits=None):
     y = np.linspace(bottom, top, N)
     X, Y = np.meshgrid(x, y)
     XY = np.stack([X, Y], axis=-1)
-    Z = np.apply_along_axis(f.y, -1, XY)
+    get_y = lambda x: f.eval(x)[0]
+    Z = np.apply_along_axis(get_y, -1, XY)
     quantile_levels = np.linspace(0.05, 0.95, 15)
     levels = np.quantile(Z.flatten(), quantile_levels)
     plt.contour(X, Y, Z, levels=levels, cmap='viridis')

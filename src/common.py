@@ -8,20 +8,8 @@ class Function(ABC):
         self.name = name if name else self.__class__.__name__
         self.dim = dim
 
+    @abstractmethod
     def eval(self, x):
-        x = np.asarray(x)
-        return self.y(x), self.g(x), self.h(x)
-
-    @abstractmethod
-    def y(self, x):
-        pass
-
-    @abstractmethod
-    def g(self, x):
-        pass
-
-    @abstractmethod
-    def h(self, x):
         pass
 
     def __add__(self, o):
@@ -38,14 +26,8 @@ class Const(Function):
         super().__init__()
         self.value = value
 
-    def y(self, x):
-        return self.value
-
-    def g(self, x):
-        return 0
-
-    def h(self, x):
-        return 0
+    def eval(self, x):
+        return self.value, 0, 0
 
 
 class Neg(Function):
@@ -56,16 +38,6 @@ class Neg(Function):
     def eval(self, x):
         y,g,h = self.base.eval(x)
         return -y, -g, -h
-
-    def y(self, x):
-        return -self.base.y(x)
-
-    def g(self, x):
-        return -self.base.g(x)
-
-    def h(self, x):
-        return -self.base.h(x)
-
 
 
 class Add(Function):
@@ -79,21 +51,6 @@ class Add(Function):
         by, bg, bh = self.b.eval(x)
         return ay + by, ag + bg, ah + bh
 
-    def y(self, x):
-        ay = self.a.y(x)
-        by = self.b.y(x)
-        return ay + by
-
-    def g(self, x):
-        ag = self.a.g(x)
-        bg = self.b.g(x)
-        return ag + bg
-
-    def h(self, x):
-        ah = self.a.h(x)
-        bh = self.b.h(x)
-        return ah + bh
-
 
 class Quadratic(Function):
     def __init__(self, Q, name = None):
@@ -101,14 +58,12 @@ class Quadratic(Function):
         super().__init__(name, Q.shape[0])
         self.Q = np.asarray(Q)
 
-    def y(self, x):
-        return x.T @ self.Q @ x
-
-    def g(self, x):
-        return 2 * self.Q @ x
-
-    def h(self, x):
-        return 2 * self.Q
+    def eval(self, x):
+        x = np.asarray(x)
+        y =  x.T @ self.Q @ x
+        g = 2 * self.Q @ x
+        h = 2 * self.Q
+        return y, g, h
 
 
 class Linear(Function):
@@ -117,12 +72,9 @@ class Linear(Function):
         super().__init__(name, a.shape[0])
         self.a = np.asarray(a)
 
-    def y(self, x):
-        return self.a @ x
-
-    def g(self, x):
-        return self.a
-
-    def h(self, x):
-        n = self.a.shape[0]
-        return np.zeros((n, n))
+    def eval(self, x):
+        x = np.asarray(x)
+        y =  self.a @ x
+        g = self.a
+        h = np.zeros((self.dim, self.dim))
+        return y, g, h
