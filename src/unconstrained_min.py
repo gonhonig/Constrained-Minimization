@@ -14,9 +14,8 @@ class Solver(ABC):
         self.success = False
         self.is_valid = True
 
-    def solve(self, f: Function, x0, max_iter = 100):
+    def solve(self, f: Function, x0, max_iter = 100, verbose = True):
         name = self.__class__.__name__
-        print(f"\nSolving {f.name} using {name} solver...")
         self.history = []
         self.f = f
         i = 0
@@ -25,11 +24,15 @@ class Solver(ABC):
         self.success = False
         self.is_valid = True
 
+        if verbose:
+            print(f"\nSolving {f.name} using {name} solver...")
+
         while i <= max_iter:
             y, g, h = self.f.eval(x)
 
             self.history.append(np.append(x, y))
-            print(f"[{name}:{i}] x: {x}, y: {y}")
+            if verbose:
+                print(f"[{name}:{i}] x: {x}, y: {y}")
 
             if self.success:
                 break

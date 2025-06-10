@@ -42,7 +42,7 @@ class Const(Function):
         return self.value
 
     def g(self, x):
-        return 1
+        return 0
 
     def h(self, x):
         return 0
@@ -77,7 +77,7 @@ class Add(Function):
     def eval(self, x):
         ay, ag, ah = self.a.eval(x)
         by, bg, bh = self.b.eval(x)
-        return ay + by, ag + by, ah + bg
+        return ay + by, ag + bg, ah + bh
 
     def y(self, x):
         ay = self.a.y(x)
