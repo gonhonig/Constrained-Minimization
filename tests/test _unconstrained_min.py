@@ -2,10 +2,10 @@ import unittest
 
 import numpy as np
 
-from src.unconstrained_min import GD, Newton
+from src.constrained_min import Newton
+from src.unconstrained_min import GD
 from src.utils import plot_function_and_paths, plot_objective_vs_iterations, print_table
 from tests import examples
-from prettytable import PrettyTable
 
 x0 = np.array([1, 1])
 obj_tol = 1e-8

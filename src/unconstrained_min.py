@@ -4,7 +4,7 @@ from src.common import Function
 
 
 class Solver(ABC):
-    def __init__(self, obj_tol, param_tol, wolfe_const, backtracking_const):
+    def __init__(self, obj_tol = 1e-8, param_tol = 1e-12, wolfe_const = 0.01, backtracking_const = 0.5):
         self.f = None
         self.obj_tol = obj_tol
         self.param_tol = param_tol
@@ -14,7 +14,7 @@ class Solver(ABC):
         self.success = False
         self.is_valid = True
 
-    def solve(self, f: Function, x0, max_iter):
+    def solve(self, f: Function, x0, max_iter = 100):
         name = self.__class__.__name__
         print(f"\nSolving {f.name} using {name} solver...")
         self.history = []
@@ -57,8 +57,12 @@ class Solver(ABC):
 
     def next_step_size(self, x, p):
         alpha = 1
+        y, g, _ = self.f.eval(x)
 
-        while self.f.y(x + alpha * p) > self.f.y(x) + self.wolfe_const * alpha * self.f.g(x).T @ p:
+        while True:
+            y_next, _, _ = self.f.eval(x + alpha * p)
+            if y_next <= y + self.wolfe_const * alpha * g.T @ p:
+                break
             alpha *= self.backtracking_const
 
         return alpha
@@ -79,10 +83,3 @@ class GD(Solver):
     def should_terminate(self, x, x_next, y, g, h, p):
         return np.linalg.norm(y - self.f.y(x_next)) < self.obj_tol
 
-
-class Newton(Solver):
-    def next_direction(self, x, y, g, h):
-        return None if h is None else np.linalg.solve(h, -g)
-
-    def should_terminate(self, x, x_next, y, g, h, p):
-        return 0.5 * p.T @ h @ p < self.obj_tol

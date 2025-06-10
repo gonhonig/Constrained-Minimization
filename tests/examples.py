@@ -1,41 +1,11 @@
 import numpy as np
 
-from src.common import Function
-
-
-class Quadratic(Function):
-    def __init__(self, Q, name):
-        super().__init__(name)
-        self.Q = np.asarray(Q)
-
-    def y(self, x):
-        return x.T @ self.Q @ x
-
-    def g(self, x):
-        return 2 * self.Q @ x
-
-    def h(self, x):
-        return 2 * self.Q
-
-
-class Linear(Function):
-    def __init__(self, a, name):
-        super().__init__(name)
-        self.a = np.asarray(a)
-
-    def y(self, x):
-        return self.a @ x
-
-    def g(self, x):
-        return self.a
-
-    def h(self, x):
-        return None
+from src.common import Function, Quadratic, Linear
 
 
 class Rosenbrock(Function):
     def __init__(self):
-        super().__init__(Rosenbrock.__name__)
+        super().__init__(Rosenbrock.__name__, 2)
 
     def y(self, x):
         return 100 * (x[1] - x[0] ** 2) ** 2 + (1 - x[0]) ** 2
@@ -51,7 +21,7 @@ class Rosenbrock(Function):
 
 class SumOfExponents(Function):
     def __init__(self):
-        super().__init__("Sum Of Exponents")
+        super().__init__("Sum Of Exponents", 2)
 
     def get_exponents(self, x):
         x1, x2 = x

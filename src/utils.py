@@ -4,34 +4,20 @@ import numpy as np
 from prettytable import PrettyTable
 
 
-def plot_function_and_paths(solvers, f, limits=None):
+def plot_function_and_paths(solvers, f):
     os.makedirs('./plots', exist_ok=True)
-    N = 100
-    left, top, right, bottom = (-2, 2, 2, -2) if limits is None else limits
-
-    if solvers is not None:
-        total_history = np.concatenate([s.history for s in solvers if s.is_valid])
-        left = np.min(total_history[:, 0])
-        right = np.max(total_history[:, 0])
-        bottom = np.min(total_history[:, 1])
-        top = np.max(total_history[:, 1])
-        x_buffer = 0.2 * (right - left)
-        y_buffer = 0.2 * (top - bottom)
-        left -= x_buffer
-        right += x_buffer
-        bottom -= y_buffer
-        top += y_buffer
-
-    x = np.linspace(left, right, N)
-    y = np.linspace(bottom, top, N)
-    X, Y = np.meshgrid(x, y)
-    XY = np.stack([X, Y], axis=-1)
-    Z = np.apply_along_axis(f.y, -1, XY)
-    quantile_levels = np.linspace(0.05, 0.95, 15)
-    levels = np.quantile(Z.flatten(), quantile_levels)
-    plt.contour(X, Y, Z, levels=levels, cmap='viridis')
-    plt.xlabel('x1')
-    plt.ylabel('x2')
+    total_history = np.concatenate([s.history for s in solvers if s.is_valid])
+    left = np.min(total_history[:, 0])
+    right = np.max(total_history[:, 0])
+    bottom = np.min(total_history[:, 1])
+    top = np.max(total_history[:, 1])
+    x_buffer = 0.2 * (right - left)
+    y_buffer = 0.2 * (top - bottom)
+    left -= x_buffer
+    right += x_buffer
+    bottom -= y_buffer
+    top += y_buffer
+    plot_function(f, (left, top, right, bottom))
     title = f'{f.name} - Function and Paths'
     plt.title(title)
 
@@ -80,6 +66,30 @@ def plot_objective_vs_iterations(solvers, f):
     plt.legend()
     plt.savefig(f'./plots/{title}.png')
     plt.close()
+
+
+def plot_function(f, limits=None):
+    dim = f.dim
+    left, top, right, bottom = (-2, 2, 2, -2) if limits is None else limits
+    N = 100
+    x = np.linspace(left, right, N)
+    y = np.linspace(bottom, top, N)
+    X, Y = np.meshgrid(x, y)
+    XY = np.stack([X, Y], axis=-1)
+    Z = np.apply_along_axis(f.y, -1, XY)
+    quantile_levels = np.linspace(0.05, 0.95, 15)
+    levels = np.quantile(Z.flatten(), quantile_levels)
+    plt.contour(X, Y, Z, levels=levels, cmap='viridis')
+    plt.xlabel('x1')
+    plt.ylabel('x2')
+
+
+def show_function(f, limits=None):
+    plot_function(f, limits)
+    plt.title(f.name)
+    plt.legend()
+    plt.show()
+
 
 
 def print_table(solvers):
