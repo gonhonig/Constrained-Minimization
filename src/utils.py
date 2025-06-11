@@ -95,10 +95,10 @@ def show_function(f, limits=None):
 
 def print_table(solvers):
     headers = ["Iterations", "x", "y", "Status"]
-    rows = [[r[1], r[2], r[3], "Success" if r[4] else f"Failure: {"max_iter" if r[5] else f"can't solve"}"] for r in solvers]
+    rows = [[r['iterations'], r['x'], r['y'], "Success" if r['success'] else f"Failure: {"max_iter" if r['is_valid'] else f"can't solve"}"] for r in solvers]
     transposed = list(zip(*([headers] + rows)))
     table = PrettyTable()
-    table.field_names = ["Solver"] + [r[0] for r in solvers]
+    table.field_names = ["Solver"] + [r['name'] for r in solvers]
     for row in transposed:
         table.add_row(row)
     print(f"\n{table}\n")

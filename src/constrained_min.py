@@ -42,15 +42,17 @@ class LogBarrierFunction(Function):
         self.x = None
 
     def eval(self, x):
-        eval_ineq = [ineq.eval(x) for ineq in self.ineq_constraints]
-        y_ineq = np.array([eval[0] for eval in eval_ineq])
-        g_ineq = np.array([eval[1] for eval in eval_ineq])
-        h_ineq = np.array([eval[2] for eval in eval_ineq])
-        h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2)[:,None,None] + (h_ineq / -y_ineq[:,None,None])
-        f_y, f_g, f_h = self.f.eval(x)
-        y = self.t * f_y - np.sum(np.log(-y_ineq))
-        g = self.t * f_g + np.sum(g_ineq / -y_ineq[:,None], axis=0)
-        h = self.t * f_h + np.sum(h_ineq, axis=0)
+        y, g, h = self.f.eval(x)
+
+        if self.ineq_constraints:
+            eval_ineq = [ineq.eval(x) for ineq in self.ineq_constraints]
+            y_ineq = np.array([eval[0] for eval in eval_ineq])
+            g_ineq = np.array([eval[1] for eval in eval_ineq])
+            h_ineq = np.array([eval[2] for eval in eval_ineq])
+            h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2)[:,None,None] + (h_ineq / -y_ineq[:,None,None])
+            y = self.t * y - np.sum(np.log(-y_ineq))
+            g = self.t * g + np.sum(g_ineq / -y_ineq[:,None], axis=0)
+            h = self.t * h + np.sum(h_ineq, axis=0)
 
         return y, g, h
 
@@ -72,30 +74,40 @@ class InteriorPointSolver:
         self.mu = mu
         self.epsilon = epsilon
 
-    def solve(self, func: Function, ineq_constraints: list[Function], eq_constraints_mat, eq_constraints_rhs, x0, verbose = True):
+    def solve(self, func: Function, x0, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, verbose = True):
         t = 1
-        m = len(ineq_constraints)
+        m = len(ineq_constraints) if ineq_constraints else 0
         f = LogBarrierFunction(func, ineq_constraints)
         newton = Newton()
         x = x0
+        shape = x.shape
+        x = x.flatten()
         A = eq_constraints_mat
         b = eq_constraints_rhs
         i = 1
         history = []
+        if verbose:
+            print("Solving using interior point method")
 
-        while m / t >= self.epsilon:
+        while i == 1 or m / t >= self.epsilon:
             f.set_t(t)
             y, _, _ = func.eval(x)
             history.append(np.append(x, y))
             if verbose:
                 print(f"[{i}] x: {x}, y: {y}")
-            _, _, next_x, _, success, is_valid = newton.solve(f=f, x0=x, A=A, b=b, verbose=False)
+            x_new = newton.solve(f=f, x0=x, A=A, b=b, verbose=False)['x']
+            if np.linalg.norm(x_new - x) < 1e-12:
+                break
+            x = x_new
             t *= self.mu
-            x = next_x
             i += 1
 
         y, _, _ = func.eval(x)
         history.append(np.append(x, y))
+        if verbose:
+            print()
+
+        x = x.reshape(shape)
 
         return {
             'x': x,

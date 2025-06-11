@@ -56,17 +56,27 @@ class Solver(ABC):
         self.history = np.asarray(self.history)
         i -= 0 if self.success else 1
 
-        return name, i, x, y, self.success, self.is_valid
+        return {
+            'name': name,
+            'iterations': i,
+            'x': x,
+            'y': y,
+            'success': self.success,
+            'is_valid': self.is_valid
+        }
 
     def next_step_size(self, x, p):
         alpha = 1
         y, g, _ = self.f.eval(x)
+        max_iter = 50
+        min_step = 1e-12
 
-        while True:
+        while alpha >= min_step and max_iter > 0:
             y_next, _, _ = self.f.eval(x + alpha * p)
             if y_next <= y + self.wolfe_const * alpha * g.T @ p:
                 break
             alpha *= self.backtracking_const
+            max_iter -= 1
 
         return alpha
 

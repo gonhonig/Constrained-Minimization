@@ -20,6 +20,10 @@ class Function(ABC):
         other = o if isinstance(o, Function) else Const(o)
         return Add(self, Neg(other))
 
+    def __neg__(self):
+        return Neg(self)
+
+
 
 class Const(Function):
     def __init__(self, value):
@@ -80,13 +84,193 @@ class Linear(Function):
         return y, g, h
 
 
+class SumSquares(Function):
+    def __init__(self, A = None):
+        super().__init__(dim=2)
+        self.A = np.asarray(A).flatten() if A is not None else None
+
+    def eval(self, x):
+        x = np.asarray(x)
+        shape = x.shape
+        x = x.flatten()
+        x = x - (self.A if self.A is not None else 0)
+        y = x.T @ x
+        g = 2 * x
+        g = g.reshape(shape)
+        h = 2 * np.eye(x.shape[0])
+
+        return y, g, h
+
+
+class TotalVariation(Function):
+    def __init__(self, shape):
+        super().__init__(dim=2)
+        self.epsilon = 1e-8
+        self.shape = shape
+
+    def eval(self, x):
+        X = np.asarray(x).reshape(self.shape)
+        m, n = X.shape
+
+        # Forward differences
+        Dx = X[1:, :] - X[:-1, :]  # shape: (m-1, n)
+        Dy = X[:, 1:] - X[:, :-1]  # shape: (m, n-1)
+
+        # Pad to make same size for norm computation
+        Dx_padded = np.zeros((m, n))
+        Dx_padded[:-1, :] = Dx
+
+        Dy_padded = np.zeros((m, n))
+        Dy_padded[:, :-1] = Dy
+
+        # Stack and compute norms
+        Dxy = np.stack((Dx_padded, Dy_padded))  # shape: (2, m, n)
+
+        epsilon = 1e-8
+        norm = np.linalg.norm(Dxy, axis=0) + epsilon  # shape: (m, n)
+        y = np.sum(norm)  # TV value
+
+        # === GRADIENT COMPUTATION ===
+        # d/dx_ij of ||∇f||_2 = (∇f) / ||∇f||_2
+        # Each pixel contributes to up to 4 norm terms
+
+        grad = np.zeros((m, n))
+
+        # Contribution from being the "center" pixel in forward differences
+        # For norm at (i,j): contributes Dx_padded[i,j]/norm[i,j] and Dy_padded[i,j]/norm[i,j]
+        grad += Dx_padded / norm  # contribution as x difference
+        grad += Dy_padded / norm  # contribution as y difference
+
+        # Contribution from being the "previous" pixel in x direction
+        # For norm at (i+1,j): contributes -Dx_padded[i+1,j]/norm[i+1,j]
+        grad[:-1, :] -= Dx_padded[1:, :] / norm[1:, :]
+
+        # Contribution from being the "previous" pixel in y direction
+        # For norm at (i,j+1): contributes -Dy_padded[i,j+1]/norm[i,j+1]
+        grad[:, :-1] -= Dy_padded[:, 1:] / norm[:, 1:]
+        grad = grad.flatten()
+
+        # === HESSIAN COMPUTATION ===
+        # This is more complex due to the 1/||∇f|| terms
+        # H_ij,kl = ∂²TV/∂x_ij∂x_kl
+
+        # For efficiency, we'll compute the Hessian sparsely
+        # The Hessian has a specific sparsity pattern due to the local nature of TV
+
+        total_pixels = m * n
+        H = np.zeros((total_pixels, total_pixels))
+
+        def idx(i, j):
+            """Convert 2D indices to 1D index"""
+            return i * n + j
+
+        for i in range(m):
+            for j in range(n):
+                curr_idx = idx(i, j)
+                norm_val = norm[i, j]
+
+                # Self-interaction terms
+                # From d²/dx² of norms involving this pixel
+
+                # Diagonal term from all norms this pixel participates in
+                diag_val = 0.0
+
+                # From norm at (i,j) - pixel appears in both Dx and Dy
+                if i < m - 1 or j < n - 1:  # if this pixel contributes to any norm
+                    # Second derivative of sqrt(Dx² + Dy²) w.r.t. pixel value
+                    Dx_val = Dx_padded[i, j]
+                    Dy_val = Dy_padded[i, j]
+
+                    # d²/dx² of sqrt(Dx² + Dy²) = Dy²/(Dx² + Dy²)^(3/2)
+                    diag_val += (Dy_val ** 2) / (norm_val ** 3)
+                    diag_val += (Dx_val ** 2) / (norm_val ** 3)
+
+                # From norm at (i-1,j) if exists
+                if i > 0:
+                    prev_norm = norm[i - 1, j]
+                    Dx_prev = Dx_padded[i - 1, j]
+                    Dy_prev = Dy_padded[i - 1, j]
+                    diag_val += (Dy_prev ** 2) / (prev_norm ** 3)
+
+                    # Cross term with (i-1,j)
+                    if Dx_prev != 0:
+                        cross_val = -(Dx_prev * Dy_prev) / (prev_norm ** 3)
+                        H[curr_idx, idx(i - 1, j)] += cross_val
+                        H[idx(i - 1, j), curr_idx] += cross_val
+
+                # From norm at (i,j-1) if exists
+                if j > 0:
+                    prev_norm = norm[i, j - 1]
+                    Dx_prev = Dx_padded[i, j - 1]
+                    Dy_prev = Dy_padded[i, j - 1]
+                    diag_val += (Dx_prev ** 2) / (prev_norm ** 3)
+
+                    # Cross term with (i,j-1)
+                    if Dy_prev != 0:
+                        cross_val = -(Dx_prev * Dy_prev) / (prev_norm ** 3)
+                        H[curr_idx, idx(i, j - 1)] += cross_val
+                        H[idx(i, j - 1), curr_idx] += cross_val
+
+                H[curr_idx, curr_idx] = diag_val
+
+                # Off-diagonal terms for neighboring pixels
+                # Interaction with right neighbor
+                if j < n - 1:
+                    neighbor_idx = idx(i, j + 1)
+                    # Both pixels contribute to norm at (i,j)
+                    cross_val = -(Dx_padded[i, j] * Dy_padded[i, j]) / (norm_val ** 3)
+                    H[curr_idx, neighbor_idx] += cross_val
+                    H[neighbor_idx, curr_idx] += cross_val
+
+                # Interaction with bottom neighbor
+                if i < m - 1:
+                    neighbor_idx = idx(i + 1, j)
+                    # Both pixels contribute to norm at (i,j)
+                    cross_val = -(Dx_padded[i, j] * Dy_padded[i, j]) / (norm_val ** 3)
+                    H[curr_idx, neighbor_idx] += cross_val
+                    H[neighbor_idx, curr_idx] += cross_val
+
+        return y, grad, H
+
+    def calc_grad(self, X):
+        n, m = X.shape
+        grad = np.zeros_like(X)
+
+        Dx = np.zeros_like(X)
+        Dy = np.zeros_like(X)
+
+        Dx[:-1, :] = X[1:, :] - X[:-1, :]
+        Dy[:, :-1] = X[:, 1:] - X[:, :-1]
+
+        # Compute magnitude
+        mag = np.sqrt(Dx ** 2 + Dy ** 2 + self.epsilon)
+
+        # Gradients w.r.t. Dx
+        Dx_grad = Dx / mag
+        Dy_grad = Dy / mag
+
+        # Backprop Dx
+        grad[:-1, :] -= Dx_grad[:-1, :]
+        grad[1:, :] += Dx_grad[:-1, :]
+
+        # Backprop Dy
+        grad[:, :-1] -= Dy_grad[:, :-1]
+        grad[:, 1:] += Dy_grad[:, :-1]
+
+        return grad
+
+    def calc_hess(self, X, V):
+        return None
+
+
+
 def affine_vars(A, b = None, c = None, d = None):
     if A is not None:
         A = np.asarray(A)
         if A.ndim == 1:
             A = A.reshape(1, -1)
 
-        b = np.asarray(b) if b is not None else (None if A is None else np.zeros(A.shape[0]))
+        b = np.asarray(b) if b is not None else (np.zeros(A.shape[0]) if A is not None else None)
         if b.ndim == 0:
             b = np.expand_dims(b, 0)
 
