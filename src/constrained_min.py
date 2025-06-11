@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.common import Function
+from src.common import Function, affine_vars
 from src.unconstrained_min import Solver
 
 
@@ -11,15 +11,7 @@ class Newton(Solver):
         self.b = None
 
     def solve(self, f: Function, x0, max_iter = 100, A = None, b = None, verbose = True):
-        if A is not None:
-            self.A = np.asarray(A)
-            if self.A.ndim == 1:
-                self.A = self.A.reshape(1, -1)
-
-            self.b = np.asarray(b) if b is not None else (None if A is None else np.zeros(self.A.shape[0]))
-            if self.b.ndim == 0:
-                self.b = np.expand_dims(self.b, 0)
-
+        self.A, self.b, _, _ = affine_vars(A, b)
         return super().solve(f, x0, max_iter, verbose)
 
     def next_direction(self, x, y, g, h):
@@ -54,11 +46,11 @@ class LogBarrierFunction(Function):
         y_ineq = np.array([eval[0] for eval in eval_ineq])
         g_ineq = np.array([eval[1] for eval in eval_ineq])
         h_ineq = np.array([eval[2] for eval in eval_ineq])
-        h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2) + (h_ineq / -y_ineq)
+        h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2)[:,None,None] + (h_ineq / -y_ineq[:,None,None])
         f_y, f_g, f_h = self.f.eval(x)
         y = self.t * f_y - np.sum(np.log(-y_ineq))
-        g = self.t * f_g + np.sum(g_ineq / -y_ineq, axis=1)
-        h = self.t * f_h + np.sum(h_ineq, axis=2)
+        g = self.t * f_g + np.sum(g_ineq / -y_ineq[:,None], axis=0)
+        h = self.t * f_h + np.sum(h_ineq, axis=0)
 
         return y, g, h
 
