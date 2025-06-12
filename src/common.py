@@ -306,37 +306,23 @@ def affine_vars(A, b = None, c = None, d = None):
 class Variable:
     def __init__(self, shape):
         self.pos = 0
-        self.data = None
-
-        if isinstance(shape, tuple):
-            self.shape = shape
-            self.dims = len(self.shape)
-            self.shape_key = np.append(np.cumprod(shape[::-1])[::-1], 1)[1:]
-        else:
-            self.shape = tuple([shape])
-            self.dims = 1
+        self.shape = shape
+        self.len = np.prod(shape)
 
 
-    def set_data(self, data: np.ndarray, pos: int):
+    def set_pos(self, pos):
         self.pos = pos
-        self.data = data
 
     def __getitem__(self, key):
-        pos = self.pos
-        if isinstance(key, tuple) and len(key) == len(self.shape):
-            pos += np.dot(np.array(key), self.shape_key)
-        else:
-            pos += key
+        return lambda x: x[self.pos:self.pos+self.len].reshape(self.shape)[key]
 
-        return pos
+    def __call__(self, x):
+        return x[self.pos:self.pos+self.len].reshape(self.shape)
 
 
-class Hstack(Variable):
-    def __init__(self, variables, axis = 0):
-        shapes = [v.shape for v in variables]
-        ref = shapes[0][:axis] + shapes[0][axis + 1:]
-        if not all(t[:axis] + t[axis + 1:] == ref for t in shapes[1:]):
-            raise ValueError("All variables must have same shape except for the axis to stack along.")
-        shape_along_axis = shapes[0][axis] if len(shapes[0]) > axis else 1
-        shape = shapes[0][:axis] + (len(variables) * shape_along_axis,) + shapes[0][axis + 1:]
-        super().__init__(shape)
+def hstack(arrays):
+    return lambda x: np.hstack([(v(x) if callable(v) else v) for v in arrays])
+
+
+def vstack(arrays):
+    return lambda x: np.vstack([(v(x) if callable(v) else v) for v in arrays])
