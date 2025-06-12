@@ -37,19 +37,22 @@ class Newton(Solver):
 
 class LogBarrierFunction(Function):
     def __init__(self, f: Function, ineq_constraints: list[Function]):
-        super().__init__(LogBarrierFunction.__name__, f.dim)
+        super().__init__(None, LogBarrierFunction.__name__, f.dim)
         self.f = f
         self.ineq_constraints = ineq_constraints
         self.t = 1
         self.x = None
 
-    def eval(self, x):
+    def eval_impl(self, x):
         y, g, h = self.f.eval(x)
 
         if self.ineq_constraints:
             eval_ineq = [ineq.eval(x) for ineq in self.ineq_constraints]
             y_ineq = np.array([eval[0] for eval in eval_ineq])
-            g_ineq = np.array([eval[1] for eval in eval_ineq])
+            try:
+                g_ineq = np.array([eval[1] for eval in eval_ineq])
+            except Exception as e:
+                pass
             h_ineq = np.array([eval[2] for eval in eval_ineq])
             h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2)[:,None,None] + (h_ineq / -y_ineq[:,None,None])
             y = self.t * y - np.sum(np.log(-y_ineq))
@@ -76,7 +79,7 @@ class InteriorPointSolver:
         self.mu = mu
         self.epsilon = epsilon
 
-    def solve(self, func: Function, x0 = None, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, verbose = True, variables = None):
+    def solve(self, func: Function, x0 = None, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, verbose = True, variables:list[Variable]=None):
         t = 1
         m = len(ineq_constraints) if ineq_constraints else 0
         f = LogBarrierFunction(func, ineq_constraints)
@@ -84,6 +87,7 @@ class InteriorPointSolver:
         A = eq_constraints_mat
         b = eq_constraints_rhs
         x = None
+        variables = variables if variables is not None else list(set(v for f in [func] + ineq_constraints for v in f.get_vars() if isinstance(v, Variable)))
 
         if x0 is not None:
             x = x0
@@ -141,19 +145,17 @@ class InteriorPointSolver:
         A, b, _, _ = parse_affine_vars(A, b)
 
         if A is None:
-            x0 = np.random.rand(length + 1)
+            x0 = np.random.rand(length)
         else:
             x0, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
-
-        s = np.zeros_like(x0)
-        s[-1] = 1
 
         max_violation = np.max([ineq.eval(x0)[0] for ineq in ineq_constraints])
         x0 = np.append(x0, max_violation + 1)
 
-        f = Linear(s)
+        s = Variable(1)
+        f = Linear([1], s)
 
-        result = self.solve(func=f, x0=x0, ineq_constraints=ineq_constraints, eq_constraints_mat=A, eq_constraints_rhs=b, verbose=False, variables=variables)
+        result = self.solve(func=f, x0=x0, ineq_constraints=ineq_constraints, eq_constraints_mat=A, eq_constraints_rhs=b, verbose=False, variables=variables+[s])
 
         return result['x'][:-1]
 

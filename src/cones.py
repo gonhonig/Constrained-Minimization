@@ -2,16 +2,16 @@ import numpy as np
 
 from src.function import Function
 from src.utils import parse_affine_vars
+from src.variable import Variable
 
 
 class GenericSOC(Function):
-    def __init__(self, A, b = None, c = None, d = None):
-        super().__init__(dim=2)
+    def __init__(self, A, b = None, c = None, d = None, variable: Variable | None = None):
+        super().__init__(variable, dim=2)
         self.A, self.b, self.c, self.d = parse_affine_vars(A, b, c, d)
         self.m, self.n = A.shape
 
-
-    def eval(self, x):
+    def eval_impl(self, x):
         x = np.asarray(x)
         quad_part = self.A @ x + self.b
         linear_part = self.c @ x + self.d
@@ -30,7 +30,7 @@ class GenericSOC(Function):
 
 class SOC(Function):
     def __init__(self, t, x):
-        super().__init__(dim=2)
+        super().__init__(None, dim=2)
         self.t = t
         self.x = x
         n = np.prod(x.shape) + 1
@@ -40,11 +40,21 @@ class SOC(Function):
         c[-1] = 1
         self.generic_soc = GenericSOC(A=A, c=c)
 
-    def eval(self, x):
+    def eval_impl(self, x):
+        n = x.shape[0]
         t = self.t(x)
         x = self.x(x).ravel()
         y, g, h = self.generic_soc.eval(np.hstack((x, t)))
+        pos = min((self.t.pos, self.x.pos))
+        length = len(self.x) + 1
+        aligned_g = np.zeros(n)
+        aligned_h = np.zeros((n, n))
+        aligned_g[pos:pos+length] = g
+        aligned_h[pos:pos+length, pos:pos+length] = h
 
-        return y, g, h
+        return y, aligned_g, aligned_h
+
+    def get_vars(self):
+        return [self.t, self.x]
 
 

@@ -28,6 +28,14 @@ class Variable(VariableBase):
     def __len__(self):
         return self.len
 
+    def align_g(self, g, aligned_g):
+        aligned_g[self.pos:self.pos+self.len] = g
+        return aligned_g
+
+    def align_h(self, h, aligned_h):
+        aligned_h[self.pos:self.pos+self.len, self.pos:self.pos+self.len] = h
+        return aligned_h
+
 
 class IndexVariable(VariableBase):
     def __init__(self, base, key):

@@ -37,7 +37,10 @@ class Solver(ABC):
             if self.success:
                 break
 
-            p = self.next_direction(x, y, g, h)
+            try:
+                p = self.next_direction(x, y, g, h)
+            except Exception as e:
+                print(e)
 
             if p is None:
                 self.success = False

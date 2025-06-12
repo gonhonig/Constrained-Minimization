@@ -45,16 +45,14 @@ class TestUnconstrained(unittest.TestCase):
                           x0=x0)
 
     def test_SOCP(self):
-        I = np.eye(2)
-        I[-1,-1] = 0
-        f = Quadratic(I)
         x = Variable(2)
         t = Variable(1)
         ineq = [
-            Linear([-1,0,0]),
-            Linear([0,-1,0]),
+            Linear([-1,0], x),
+            Linear([0,-1], x),
             SOC(x=x, t=t)
         ]
+        f = Quadratic(np.eye(2), x)
         A = [1,1,0]
         b = 1
         x0 = np.array([0.1, 0.9])
@@ -62,8 +60,7 @@ class TestUnconstrained(unittest.TestCase):
                           ineq_constraints=ineq,
                           eq_constraints_mat=A,
                           eq_constraints_rhs=b,
-                          x0=None,
-                          variables=(x,t))
+                          x0=None)
 
 
 if __name__ == '__main__':

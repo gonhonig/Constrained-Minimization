@@ -1,13 +1,13 @@
 import numpy as np
 
-from src.common import Function, Quadratic, Linear
+from src.function import *
 
 
 class Rosenbrock(Function):
     def __init__(self):
-        super().__init__(Rosenbrock.__name__, 2)
+        super().__init__(name=Rosenbrock.__name__, dim=2)
 
-    def eval(self, x):
+    def eval_impl(self, x):
         x = np.asarray(x)
         y = 100 * (x[1] - x[0] ** 2) ** 2 + (1 - x[0]) ** 2
         g = np.array([-400 * x[0] * (x[1] - x[0] ** 2) - 2 * (1 - x[0]),
@@ -19,7 +19,7 @@ class Rosenbrock(Function):
 
 class SumOfExponents(Function):
     def __init__(self):
-        super().__init__("Sum Of Exponents", 2)
+        super().__init__(name="Sum Of Exponents", dim=2)
 
     def get_exponents(self, x):
         x1, x2 = x
@@ -29,7 +29,7 @@ class SumOfExponents(Function):
 
         return A, B, C
 
-    def eval(self, x):
+    def eval_impl(self, x):
         A, B, C = self.get_exponents(x)
         df_dx1 = A + B - C
         df_dx2 = 3 * A - 3 * B
@@ -50,7 +50,7 @@ class SumOfExponents(Function):
 A = np.array([[np.sqrt(3) / 2, -0.5], [0.5, np.sqrt(3) / 2]])
 B = np.array([[100, 0], [0, 1]])
 
-circle = Quadratic([[1, 0],[0, 1]], "Circle")
-ellipses = Quadratic([[1, 0],[0, 100]], "Ellipses")
-rotated_ellipses = Quadratic(A.T @ B @ A, "Rotated Ellipses")
-linear = Linear([-1,2], "Linear")
+circle = Quadratic([[1, 0],[0, 1]], name="Circle")
+ellipses = Quadratic([[1, 0],[0, 100]], name="Ellipses")
+rotated_ellipses = Quadratic(A.T @ B @ A, name="Rotated Ellipses")
+linear = Linear([-1,2], name="Linear")

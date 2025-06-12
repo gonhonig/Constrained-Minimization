@@ -2,15 +2,35 @@ from abc import ABC, abstractmethod
 
 import numpy as np
 
+from src.variable import Variable
+
 
 class Function(ABC):
-    def __init__(self, Variable, name = None, dim = 1):
+    def __init__(self, variable: Variable | None = None, name = None, dim = 1):
         self.name = name if name else self.__class__.__name__
         self.dim = dim
+        self.variable = variable
+
+    def eval(self, x):
+        n = x.shape[0]
+        if self.variable is None:
+            return self.eval_impl(x)
+
+        y, g, h = self.eval_impl(self.variable(x))
+
+        aligned_g = np.zeros(n)
+        aligned_h = np.zeros((n,n))
+        g = self.variable.align_g(g, aligned_g)
+        h = self.variable.align_h(h, aligned_h)
+
+        return y, g, h
 
     @abstractmethod
-    def eval(self, x):
+    def eval_impl(self, x):
         pass
+
+    def get_vars(self):
+        return [self.variable] if self.variable is not None else []
 
     def __add__(self, o):
         other = o if isinstance(o, Function) else Const(o)
@@ -41,7 +61,7 @@ class Const(Function):
         super().__init__()
         self.value = value
 
-    def eval(self, x):
+    def eval_impl(self, x):
         return self.value, 0, 0
 
 
@@ -50,9 +70,12 @@ class Neg(Function):
         super().__init__()
         self.base = base
 
-    def eval(self, x):
+    def eval_impl(self, x):
         y,g,h = self.base.eval(x)
         return -y, -g, -h
+
+    def get_vars(self):
+        return self.base.get_vars()
 
 
 class Mul(Function):
@@ -61,30 +84,36 @@ class Mul(Function):
         self.base = base
         self.scalar = scalar
 
-    def eval(self, x):
+    def eval_impl(self, x):
         y,g,h = self.base.eval(x)
         return self.scalar * y, self.scalar * g, self.scalar * h
+
+    def get_vars(self):
+        return self.base.get_vars()
 
 
 class Add(Function):
     def __init__(self, a: Function, b: Function):
-        super().__init__(f"{a.name} + {b.name}", max(a.dim, b.dim))
+        super().__init__(name=f"{a.name} + {b.name}", dim=max(a.dim, b.dim))
         self.a = a
         self.b = b
 
-    def eval(self, x):
+    def eval_impl(self, x):
         ay, ag, ah = self.a.eval(x)
         by, bg, bh = self.b.eval(x)
         return ay + by, ag + bg, ah + bh
 
+    def get_vars(self):
+        return self.a.get_vars() + self.b.get_vars()
+
 
 class Quadratic(Function):
-    def __init__(self, Q, name = None):
+    def __init__(self, Q, variable: Variable | None = None, name = None):
         Q = np.asarray(Q)
-        super().__init__(name, Q.shape[0])
+        super().__init__(variable, name, Q.shape[0])
         self.Q = np.asarray(Q)
 
-    def eval(self, x):
+    def eval_impl(self, x):
         x = np.asarray(x)
         y =  x.T @ self.Q @ x
         g = 2 * self.Q @ x
@@ -93,12 +122,12 @@ class Quadratic(Function):
 
 
 class Linear(Function):
-    def __init__(self, a, name = None):
+    def __init__(self, a, variable: Variable | None = None, name = None):
         a = np.asarray(a)
-        super().__init__(name, a.shape[0])
+        super().__init__(variable, name, a.shape[0])
         self.a = np.asarray(a)
 
-    def eval(self, x):
+    def eval_impl(self, x):
         x = np.asarray(x)
         y =  self.a @ x
         g = self.a
@@ -107,11 +136,11 @@ class Linear(Function):
 
 
 class SumSquares(Function):
-    def __init__(self, A = None):
-        super().__init__(dim=2)
+    def __init__(self, variable: Variable | None = None, A = None):
+        super().__init__(variable, dim=2)
         self.A = np.asarray(A).ravel() if A is not None else None
 
-    def eval(self, x):
+    def eval_impl(self, x):
         x = np.asarray(x)
         shape = x.shape
         x = x.ravel()
@@ -130,7 +159,7 @@ class TotalVariation(Function):
         self.epsilon = 1e-8
         self.shape = shape
 
-    def eval(self, x):
+    def eval_impl(self, x):
         X = np.asarray(x).reshape(self.shape)
         m, n = X.shape
 
