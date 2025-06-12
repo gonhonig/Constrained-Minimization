@@ -25,3 +25,12 @@ class SOC(Function):
         h = self.A.T @ hess_matrix @ self.A
 
         return y, g, h
+
+
+class NormSOC(Function):
+    def __init__(self, t, x):
+        super().__init__(dim=2)
+        self.t = t
+        self.x = x
+
+    def eval(self, x):

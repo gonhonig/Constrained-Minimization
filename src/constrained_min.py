@@ -81,7 +81,7 @@ class InteriorPointSolver:
         newton = Newton()
         x = x0
         shape = x.shape
-        x = x.flatten()
+        x = x.ravel()
         A = eq_constraints_mat
         b = eq_constraints_rhs
         i = 1

@@ -27,7 +27,7 @@ def denoise_image(Y, l = 0.1):
     X = cp.Variable((n, m))
     T = cp.Variable((n - 1, m - 1))
     x = cp.vec(X, order='C')
-    y = Y.flatten(order='C')
+    y = Y.ravel(order='C')
     s = cp.Variable()
     constraints = []
 

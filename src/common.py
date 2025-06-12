@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 
 import numpy as np
+from numpy import ndarray
 
 
 class Function(ABC):
@@ -23,6 +24,17 @@ class Function(ABC):
     def __neg__(self):
         return Neg(self)
 
+    def __mul__(self, o):
+        if not np.isscalar(o):
+            raise TypeError("Function can only be multiplied by scalar")
+
+        return Mul(self, o)
+
+    def __rmul__(self, other):
+        if not np.isscalar(other):
+            raise TypeError("Function can only be multiplied by scalar")
+
+        return Mul(self, other)
 
 
 class Const(Function):
@@ -42,6 +54,17 @@ class Neg(Function):
     def eval(self, x):
         y,g,h = self.base.eval(x)
         return -y, -g, -h
+
+
+class Mul(Function):
+    def __init__(self, base: Function, scalar):
+        super().__init__()
+        self.base = base
+        self.scalar = scalar
+
+    def eval(self, x):
+        y,g,h = self.base.eval(x)
+        return self.scalar * y, self.scalar * g, self.scalar * h
 
 
 class Add(Function):
@@ -87,12 +110,12 @@ class Linear(Function):
 class SumSquares(Function):
     def __init__(self, A = None):
         super().__init__(dim=2)
-        self.A = np.asarray(A).flatten() if A is not None else None
+        self.A = np.asarray(A).ravel() if A is not None else None
 
     def eval(self, x):
         x = np.asarray(x)
         shape = x.shape
-        x = x.flatten()
+        x = x.ravel()
         x = x - (self.A if self.A is not None else 0)
         y = x.T @ x
         g = 2 * x
@@ -148,7 +171,7 @@ class TotalVariation(Function):
         # Contribution from being the "previous" pixel in y direction
         # For norm at (i,j+1): contributes -Dy_padded[i,j+1]/norm[i,j+1]
         grad[:, :-1] -= Dy_padded[:, 1:] / norm[:, 1:]
-        grad = grad.flatten()
+        grad = grad.ravel()
 
         # === HESSIAN COMPUTATION ===
         # This is more complex due to the 1/||∇f|| terms
@@ -278,3 +301,42 @@ def affine_vars(A, b = None, c = None, d = None):
         d = d if d is not None else 0
 
     return A, b, c, d
+
+
+class Variable:
+    def __init__(self, shape):
+        self.pos = 0
+        self.data = None
+
+        if isinstance(shape, tuple):
+            self.shape = shape
+            self.dims = len(self.shape)
+            self.shape_key = np.append(np.cumprod(shape[::-1])[::-1], 1)[1:]
+        else:
+            self.shape = tuple([shape])
+            self.dims = 1
+
+
+    def set_data(self, data: np.ndarray, pos: int):
+        self.pos = pos
+        self.data = data
+
+    def __getitem__(self, key):
+        pos = self.pos
+        if isinstance(key, tuple) and len(key) == len(self.shape):
+            pos += np.dot(np.array(key), self.shape_key)
+        else:
+            pos += key
+
+        return pos
+
+
+class Hstack(Variable):
+    def __init__(self, variables, axis = 0):
+        shapes = [v.shape for v in variables]
+        ref = shapes[0][:axis] + shapes[0][axis + 1:]
+        if not all(t[:axis] + t[axis + 1:] == ref for t in shapes[1:]):
+            raise ValueError("All variables must have same shape except for the axis to stack along.")
+        shape_along_axis = shapes[0][axis] if len(shapes[0]) > axis else 1
+        shape = shapes[0][:axis] + (len(variables) * shape_along_axis,) + shapes[0][axis + 1:]
+        super().__init__(shape)

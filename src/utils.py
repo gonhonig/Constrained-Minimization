@@ -79,7 +79,7 @@ def plot_function(f, limits=None):
     get_y = lambda x: f.eval(x)[0]
     Z = np.apply_along_axis(get_y, -1, XY)
     quantile_levels = np.linspace(0.05, 0.95, 15)
-    levels = np.quantile(Z.flatten(), quantile_levels)
+    levels = np.quantile(Z.ravel(), quantile_levels)
     plt.contour(X, Y, Z, levels=levels, cmap='viridis')
     plt.xlabel('x1')
     plt.ylabel('x2')
