@@ -94,7 +94,7 @@ class InteriorPointSolver:
             y, _, _ = func.eval(x)
             history.append(np.append(x, y))
             if verbose:
-                print(f"[{i}] x: {x}, y: {y}")
+                print(f"[{i}] y: {y}")
             x_new = newton.solve(f=f, x0=x, A=A, b=b, verbose=False)['x']
             if np.linalg.norm(x_new - x) < 1e-12:
                 break
