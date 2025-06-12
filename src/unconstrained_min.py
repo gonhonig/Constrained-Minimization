@@ -1,6 +1,6 @@
 from abc import abstractmethod, ABC
 import numpy as np
-from src.common import Function
+from src.function import Function
 
 
 class Solver(ABC):

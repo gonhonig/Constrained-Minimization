@@ -1,12 +1,13 @@
 import numpy as np
 
-from src.common import Function, affine_vars
+from src.function import Function
+from src.utils import parse_affine_vars
 
 
-class SOC(Function):
+class GenericSOC(Function):
     def __init__(self, A, b = None, c = None, d = None):
         super().__init__(dim=2)
-        self.A, self.b, self.c, self.d = affine_vars(A, b, c, d)
+        self.A, self.b, self.c, self.d = parse_affine_vars(A, b, c, d)
         self.m, self.n = A.shape
 
 
@@ -27,10 +28,23 @@ class SOC(Function):
         return y, g, h
 
 
-class NormSOC(Function):
+class SOC(Function):
     def __init__(self, t, x):
         super().__init__(dim=2)
         self.t = t
         self.x = x
+        n = np.prod(x.shape) + 1
+        A = np.eye(n)
+        A[-1,-1] = 0
+        c = np.zeros(n)
+        c[-1] = 1
+        self.generic_soc = GenericSOC(A=A, c=c)
 
     def eval(self, x):
+        t = self.t(x)
+        x = self.x(x).ravel()
+        y, g, h = self.generic_soc.eval(np.hstack((x, t)))
+
+        return y, g, h
+
+

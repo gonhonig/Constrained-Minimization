@@ -1,7 +1,9 @@
 import numpy as np
 
-from src.common import Function, affine_vars
+from src.function import Function, Linear
 from src.unconstrained_min import Solver
+from src.utils import parse_affine_vars
+from src.variable import Variable
 
 
 class Newton(Solver):
@@ -11,7 +13,7 @@ class Newton(Solver):
         self.b = None
 
     def solve(self, f: Function, x0, max_iter = 100, A = None, b = None, verbose = True):
-        self.A, self.b, _, _ = affine_vars(A, b)
+        self.A, self.b, _, _ = parse_affine_vars(A, b)
         return super().solve(f, x0, max_iter, verbose)
 
     def next_direction(self, x, y, g, h):
@@ -74,16 +76,24 @@ class InteriorPointSolver:
         self.mu = mu
         self.epsilon = epsilon
 
-    def solve(self, func: Function, x0, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, verbose = True):
+    def solve(self, func: Function, x0 = None, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, verbose = True, variables = None):
         t = 1
         m = len(ineq_constraints) if ineq_constraints else 0
         f = LogBarrierFunction(func, ineq_constraints)
         newton = Newton()
-        x = x0
-        shape = x.shape
-        x = x.ravel()
         A = eq_constraints_mat
         b = eq_constraints_rhs
+        x = None
+
+        if x0 is not None:
+            x = x0
+            x0_len = self.set_variables_positions(variables)
+            # if len(x0) != x0_len:
+            #     raise ValueError("x0 must match the shape of the sum of all variables")
+        elif variables is not None:
+            x = self.find_x0(variables, ineq_constraints, A, b)
+
+        x = x.ravel()
         i = 1
         history = []
         if verbose:
@@ -94,7 +104,7 @@ class InteriorPointSolver:
             y, _, _ = func.eval(x)
             history.append(np.append(x, y))
             if verbose:
-                print(f"[{i}] x: {x}, y: {y}")
+                print(f"[{i}] y: {y}")
             x_new = newton.solve(f=f, x0=x, A=A, b=b, verbose=False)['x']
             if np.linalg.norm(x_new - x) < 1e-12:
                 break
@@ -107,12 +117,45 @@ class InteriorPointSolver:
         if verbose:
             print()
 
-        x = x.reshape(shape)
-
         return {
             'x': x,
             'f': y,
             'iterations': i,
             'history': history
         }
+
+    def set_variables_positions(self, variables):
+        if variables is None:
+            return 0
+
+        length = 0
+        for variable in variables:
+            if not isinstance(variable, Variable):
+                continue
+            variable.pos = length
+            length += len(variable)
+        return length
+
+    def find_x0(self, variables, ineq_constraints, A, b):
+        length = self.set_variables_positions(variables)
+        A, b, _, _ = parse_affine_vars(A, b)
+
+        if A is None:
+            x0 = np.random.rand(length + 1)
+        else:
+            x0, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
+
+        s = np.zeros_like(x0)
+        s[-1] = 1
+
+        max_violation = np.max([ineq.eval(x0)[0] for ineq in ineq_constraints])
+        x0 = np.append(x0, max_violation + 1)
+
+        f = Linear(s)
+
+        result = self.solve(func=f, x0=x0, ineq_constraints=ineq_constraints, eq_constraints_mat=A, eq_constraints_rhs=b, verbose=False, variables=variables)
+
+        return result['x'][:-1]
+
+
 

@@ -1,11 +1,10 @@
 from abc import ABC, abstractmethod
 
 import numpy as np
-from numpy import ndarray
 
 
 class Function(ABC):
-    def __init__(self, name = None, dim = 1):
+    def __init__(self, Variable, name = None, dim = 1):
         self.name = name if name else self.__class__.__name__
         self.dim = dim
 
@@ -281,48 +280,3 @@ class TotalVariation(Function):
         grad[:, 1:] += Dy_grad[:, :-1]
 
         return grad
-
-    def calc_hess(self, X, V):
-        return None
-
-
-
-def affine_vars(A, b = None, c = None, d = None):
-    if A is not None:
-        A = np.asarray(A)
-        if A.ndim == 1:
-            A = A.reshape(1, -1)
-
-        b = np.asarray(b) if b is not None else (np.zeros(A.shape[0]) if A is not None else None)
-        if b.ndim == 0:
-            b = np.expand_dims(b, 0)
-
-        c = np.asarray(c).reshape(b.shape) if c is not None else np.zeros_like(b)
-        d = d if d is not None else 0
-
-    return A, b, c, d
-
-
-class Variable:
-    def __init__(self, shape):
-        self.pos = 0
-        self.shape = shape
-        self.len = np.prod(shape)
-
-
-    def set_pos(self, pos):
-        self.pos = pos
-
-    def __getitem__(self, key):
-        return lambda x: x[self.pos:self.pos+self.len].reshape(self.shape)[key]
-
-    def __call__(self, x):
-        return x[self.pos:self.pos+self.len].reshape(self.shape)
-
-
-def hstack(arrays):
-    return lambda x: np.hstack([(v(x) if callable(v) else v) for v in arrays])
-
-
-def vstack(arrays):
-    return lambda x: np.vstack([(v(x) if callable(v) else v) for v in arrays])
