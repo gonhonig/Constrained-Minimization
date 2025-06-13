@@ -1,7 +1,10 @@
+from typing import Sequence
+
 import numpy as np
 
-from src.common import Function, affine_vars
+from src.function import Function, Linear
 from src.unconstrained_min import Solver
+from src.utils import parse_affine_vars
 
 
 class Newton(Solver):
@@ -11,7 +14,7 @@ class Newton(Solver):
         self.b = None
 
     def solve(self, f: Function, x0, max_iter = 100, A = None, b = None, verbose = True):
-        self.A, self.b, _, _ = affine_vars(A, b)
+        self.A, self.b, _, _ = parse_affine_vars(A, b)
         return super().solve(f, x0, max_iter, verbose)
 
     def next_direction(self, x, y, g, h):
@@ -19,14 +22,15 @@ class Newton(Solver):
             return None
 
         if self.A is None:
-            return np.linalg.solve(h, -g)
+            return np.linalg.lstsq(h, -g, rcond=None)[0]
 
         n, m = self.A.shape
         lhs = np.block([[h, self.A.T],
                         [self.A, np.zeros((n, n))]])
         rhs = np.concatenate((-g, np.zeros(n)))
+        x = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
 
-        return np.linalg.solve(lhs, rhs)[:m]
+        return x[:m]
 
     def should_terminate(self, x, x_next, y, g, h, p):
         return 0.5 * p.T @ h @ p < self.obj_tol
@@ -68,33 +72,39 @@ class LogBarrierFunction(Function):
     def set_t(self, t):
         self.t = t
 
+    def pad(self, pad_width, constant_values=0):
+        return self
+
 
 class InteriorPointSolver:
     def __init__(self, mu = 10, epsilon = 1e-10):
         self.mu = mu
         self.epsilon = epsilon
 
-    def solve(self, func: Function, x0, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, verbose = True):
+    def solve(self, func: Function, x0: int|Sequence|np.ndarray, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, verbose = True):
         t = 1
         m = len(ineq_constraints) if ineq_constraints else 0
         f = LogBarrierFunction(func, ineq_constraints)
         newton = Newton()
-        x = x0
-        shape = x.shape
-        x = x.ravel()
         A = eq_constraints_mat
         b = eq_constraints_rhs
+
+        if isinstance(x0, int):
+            x = self.find_x0(x0, ineq_constraints, A, b)
+        else:
+            x = np.asarray(x0)
+            x = x.ravel()
+
         i = 1
         history = []
-        if verbose:
-            print("Solving using interior point method")
 
         while i == 1 or m / t >= self.epsilon:
+            newton.name = f"Inner {i}"
             f.set_t(t)
             y, _, _ = func.eval(x)
             history.append(np.append(x, y))
             if verbose:
-                print(f"[{i}] y: {y}")
+                print(f"[Outer {i}] y: {y}")
             x_new = newton.solve(f=f, x0=x, A=A, b=b, verbose=False)['x']
             if np.linalg.norm(x_new - x) < 1e-12:
                 break
@@ -105,9 +115,7 @@ class InteriorPointSolver:
         y, _, _ = func.eval(x)
         history.append(np.append(x, y))
         if verbose:
-            print()
-
-        x = x.reshape(shape)
+            print("Done!")
 
         return {
             'x': x,
@@ -116,3 +124,24 @@ class InteriorPointSolver:
             'history': history
         }
 
+    def find_x0(self, length, ineq_constraints, A, b):
+        print("\nFinding initial point")
+        A, b, _, _ = parse_affine_vars(A, b)
+
+        if A is None:
+            x0 = np.random.rand(length)
+        else:
+            x0, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
+            A = np.pad(A, (0,1), 'constant')
+            b = np.pad(b, (0,1), 'constant')
+
+        max_violation = np.max([ineq.eval(x0)[0] for ineq in ineq_constraints])
+        x0 = np.append(x0, max_violation + 1)
+        s = np.zeros_like(x0)
+        s[-1] = 1
+        f = Linear(s)
+        ineq_constraints_with_s = [constraint.pad((0,1)) - f for constraint in ineq_constraints]
+
+        result = self.solve(func=f, x0=x0, ineq_constraints=ineq_constraints_with_s, eq_constraints_mat=A, eq_constraints_rhs=b, verbose=False)
+
+        return result['x'][:-1]

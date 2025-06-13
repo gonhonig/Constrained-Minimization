@@ -3,7 +3,6 @@ import unittest
 from src.constrained_min import InteriorPointSolver
 from src.function import SumSquares, TotalVariation, Linear
 from src.image_denoising import load_image, show_image
-from src.phase_one import get_initial_point
 from src.cones import *
 
 
@@ -48,19 +47,6 @@ class TestImageDenoising(unittest.TestCase):
         result = self.Solver.solve(func=f, ineq_constraints=ineq, x0=len_x)
         X = result['x'][:m*n].reshape((m,n))
         show_image(X, "clean")
-
-
-    @unittest.skip("Temporarily disabled")
-    def test_image_denoising_TV(self):
-        n = 30
-        offset = 100
-        noisy_image = load_image('noisy_img.jpg')[offset:offset + n, offset:offset + n]
-        show_image(noisy_image, "noisy")
-        x0 = get_initial_point(noisy_image, method="median")
-
-        f = TotalVariation(noisy_image.shape) + 0.3 * SumSquares(A=noisy_image)
-        result = self.Solver.solve(func=f, x0=x0)
-        show_image(result['x'], "clean")
 
 
 if __name__ == '__main__':

@@ -1,12 +1,13 @@
 import numpy as np
 
-from src.common import Function, affine_vars
+from src.function import Function
+from src.utils import parse_affine_vars
 
 
 class SOC(Function):
     def __init__(self, A, b = None, c = None, d = None):
         super().__init__(dim=2)
-        self.A, self.b, self.c, self.d = affine_vars(A, b, c, d)
+        self.A, self.b, self.c, self.d = parse_affine_vars(A, b, c, d)
         self.m, self.n = A.shape
 
 
@@ -25,3 +26,10 @@ class SOC(Function):
         h = self.A.T @ hess_matrix @ self.A
 
         return y, g, h
+
+    def pad(self, pad_width, constant_values=0):
+        A = np.pad(self.A, pad_width=pad_width, constant_values=constant_values, mode='constant')
+        b = np.pad(self.b, pad_width=pad_width, constant_values=constant_values, mode='constant')
+        c = np.pad(self.c, pad_width=pad_width, constant_values=constant_values, mode='constant')
+        d = np.pad(self.d, pad_width=pad_width, constant_values=constant_values, mode='constant')
+        return SOC(A, b, c, d)

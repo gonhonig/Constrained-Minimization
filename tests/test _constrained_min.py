@@ -2,11 +2,10 @@ import unittest
 
 import numpy as np
 
-from src.common import Linear, Quadratic, SumSquares, TotalVariation, Variable
+from src.function import Linear, Quadratic, SumSquares, TotalVariation
 from src.cones import SOC
 from src.constrained_min import InteriorPointSolver
 from src.image_denoising import load_image, show_image
-from src.phase_one import get_initial_point
 from skimage.transform import resize
 
 
@@ -36,12 +35,12 @@ class TestUnconstrained(unittest.TestCase):
         ]
         A = [1,1]
         b = 1
-        x0 = np.array([0.1, 0.9])
-        self.Solver.solve(func=f,
+        result = self.Solver.solve(func=f,
                           ineq_constraints=ineq,
                           eq_constraints_mat=A,
                           eq_constraints_rhs=b,
-                          x0=x0)
+                          x0=2)
+        print(f"x: {result['x']}")
 
 if __name__ == '__main__':
     unittest.main()

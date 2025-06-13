@@ -1,7 +1,6 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod, ABC
 
 import numpy as np
-from numpy import ndarray
 
 
 class Function(ABC):
@@ -11,6 +10,10 @@ class Function(ABC):
 
     @abstractmethod
     def eval(self, x):
+        pass
+
+    @abstractmethod
+    def pad(self, pad_width, constant_values=0):
         pass
 
     def __add__(self, o):
@@ -45,6 +48,9 @@ class Const(Function):
     def eval(self, x):
         return self.value, 0, 0
 
+    def pad(self, pad_width, constant_values=0):
+        return self
+
 
 class Neg(Function):
     def __init__(self, base: Function):
@@ -54,6 +60,10 @@ class Neg(Function):
     def eval(self, x):
         y,g,h = self.base.eval(x)
         return -y, -g, -h
+
+    def pad(self, pad_width, constant_values=0):
+        base = self.base.pad(pad_width, constant_values)
+        return Neg(base)
 
 
 class Mul(Function):
@@ -66,6 +76,10 @@ class Mul(Function):
         y,g,h = self.base.eval(x)
         return self.scalar * y, self.scalar * g, self.scalar * h
 
+    def pad(self, pad_width, constant_values=0):
+        base = self.base.pad(pad_width, constant_values)
+        return Mul(base, self.scalar)
+
 
 class Add(Function):
     def __init__(self, a: Function, b: Function):
@@ -77,6 +91,11 @@ class Add(Function):
         ay, ag, ah = self.a.eval(x)
         by, bg, bh = self.b.eval(x)
         return ay + by, ag + bg, ah + bh
+
+    def pad(self, pad_width, constant_values=0):
+        a = self.a.pad(pad_width, constant_values)
+        b = self.b.pad(pad_width, constant_values)
+        return Add(a, b)
 
 
 class Quadratic(Function):
@@ -92,6 +111,10 @@ class Quadratic(Function):
         h = 2 * self.Q
         return y, g, h
 
+    def pad(self, pad_width, constant_values=0):
+        Q = np.pad(self.Q, pad_width=pad_width, constant_values=constant_values, mode='constant')
+        return Quadratic(Q, self.name)
+
 
 class Linear(Function):
     def __init__(self, a, name = None):
@@ -105,6 +128,10 @@ class Linear(Function):
         g = self.a
         h = np.zeros((self.dim, self.dim))
         return y, g, h
+
+    def pad(self, pad_width, constant_values=0):
+        a = np.pad(self.a, pad_width=pad_width, constant_values=constant_values, mode='constant')
+        return Linear(a, self.name)
 
 
 class SumSquares(Function):
@@ -123,6 +150,10 @@ class SumSquares(Function):
         h = 2 * np.eye(x.shape[0])
 
         return y, g, h
+
+    def pad(self, pad_width, constant_values=0):
+        A = np.pad(self.A, pad_width=pad_width, constant_values=constant_values, mode='constant')
+        return SumSquares(A)
 
 
 class TotalVariation(Function):
@@ -285,58 +316,5 @@ class TotalVariation(Function):
     def calc_hess(self, X, V):
         return None
 
-
-
-def affine_vars(A, b = None, c = None, d = None):
-    if A is not None:
-        A = np.asarray(A)
-        if A.ndim == 1:
-            A = A.reshape(1, -1)
-
-        b = np.asarray(b) if b is not None else (np.zeros(A.shape[0]) if A is not None else None)
-        if b.ndim == 0:
-            b = np.expand_dims(b, 0)
-
-        c = np.asarray(c).reshape(b.shape) if c is not None else np.zeros_like(b)
-        d = d if d is not None else 0
-
-    return A, b, c, d
-
-
-class Variable:
-    def __init__(self, shape):
-        self.pos = 0
-        self.data = None
-
-        if isinstance(shape, tuple):
-            self.shape = shape
-            self.dims = len(self.shape)
-            self.shape_key = np.append(np.cumprod(shape[::-1])[::-1], 1)[1:]
-        else:
-            self.shape = tuple([shape])
-            self.dims = 1
-
-
-    def set_data(self, data: np.ndarray, pos: int):
-        self.pos = pos
-        self.data = data
-
-    def __getitem__(self, key):
-        pos = self.pos
-        if isinstance(key, tuple) and len(key) == len(self.shape):
-            pos += np.dot(np.array(key), self.shape_key)
-        else:
-            pos += key
-
-        return pos
-
-
-class Hstack(Variable):
-    def __init__(self, variables, axis = 0):
-        shapes = [v.shape for v in variables]
-        ref = shapes[0][:axis] + shapes[0][axis + 1:]
-        if not all(t[:axis] + t[axis + 1:] == ref for t in shapes[1:]):
-            raise ValueError("All variables must have same shape except for the axis to stack along.")
-        shape_along_axis = shapes[0][axis] if len(shapes[0]) > axis else 1
-        shape = shapes[0][:axis] + (len(variables) * shape_along_axis,) + shapes[0][axis + 1:]
-        super().__init__(shape)
+    def pad(self, pad_width, constant_values=0):
+        return self
