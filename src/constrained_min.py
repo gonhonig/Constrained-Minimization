@@ -1,4 +1,4 @@
-from typing import Sequence
+from typing import Sequence, Callable
 
 import numpy as np
 
@@ -81,7 +81,9 @@ class InteriorPointSolver:
         self.mu = mu
         self.epsilon = epsilon
 
-    def solve(self, func: Function, x0: int|Sequence|np.ndarray, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, verbose = True):
+    def solve(self, func: Function, x0: int|Sequence|np.ndarray, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, custom_break: Callable = None):
+        print("Interior point solver started")
+        print("+++++++++++++++++++++++++++++")
         t = 1
         m = len(ineq_constraints) if ineq_constraints else 0
         f = LogBarrierFunction(func, ineq_constraints)
@@ -99,14 +101,14 @@ class InteriorPointSolver:
         history = []
 
         while i == 1 or m / t >= self.epsilon:
-            newton.name = f"Inner {i}"
+            newton.name = f"Inner {i:>2}"
             f.set_t(t)
             y, _, _ = func.eval(x)
             history.append(np.append(x, y))
-            if verbose:
-                print(f"[Outer {i}] y: {y}")
+            print(f"[Outer {i:>2}] y: {y:.4f}")
             x_new = newton.solve(f=f, x0=x, A=A, b=b, verbose=False)['x']
-            if np.linalg.norm(x_new - x) < 1e-12:
+            print()
+            if np.linalg.norm(x_new - x) < 1e-12 or (custom_break is not None and custom_break(x)):
                 break
             x = x_new
             t *= self.mu
@@ -114,12 +116,12 @@ class InteriorPointSolver:
 
         y, _, _ = func.eval(x)
         history.append(np.append(x, y))
-        if verbose:
-            print("Done!")
+        print("Done!")
+        print("+++++++++++++++++++++++++++++")
 
         return {
             'x': x,
-            'f': y,
+            'y': y,
             'iterations': i,
             'history': history
         }
@@ -131,9 +133,14 @@ class InteriorPointSolver:
         if A is None:
             x0 = np.random.rand(length)
         else:
-            x0, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
+            x0 = np.linalg.lstsq(A, b, rcond=None)[0]
             A = np.pad(A, (0,1), 'constant')
             b = np.pad(b, (0,1), 'constant')
+
+        if ineq_constraints:
+            all_satisfied = all(ineq.eval(x0)[0] < 0 for ineq in ineq_constraints)
+            if all_satisfied:
+                return x0
 
         max_violation = np.max([ineq.eval(x0)[0] for ineq in ineq_constraints])
         x0 = np.append(x0, max_violation + 1)
@@ -141,7 +148,11 @@ class InteriorPointSolver:
         s[-1] = 1
         f = Linear(s)
         ineq_constraints_with_s = [constraint.pad((0,1)) - f for constraint in ineq_constraints]
+        custom_break = lambda x: x[-1] < 0
+        result = self.solve(func=f, x0=x0, ineq_constraints=ineq_constraints_with_s, eq_constraints_mat=A, eq_constraints_rhs=b, verbose=False, custom_break=custom_break)
+        s = result['x'][-1]
 
-        result = self.solve(func=f, x0=x0, ineq_constraints=ineq_constraints_with_s, eq_constraints_mat=A, eq_constraints_rhs=b, verbose=False)
+        if s > 0:
+            raise ValueError("The problem is infeasible")
 
         return result['x'][:-1]
