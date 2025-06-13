@@ -8,7 +8,6 @@ class Rosenbrock(Function):
         super().__init__(Rosenbrock.__name__, 2)
 
     def eval(self, x):
-        x = np.asarray(x)
         y = 100 * (x[1] - x[0] ** 2) ** 2 + (1 - x[0]) ** 2
         g = np.array([-400 * x[0] * (x[1] - x[0] ** 2) - 2 * (1 - x[0]),
                          200 * (x[1] - x[0] ** 2)])

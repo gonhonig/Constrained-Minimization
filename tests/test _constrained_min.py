@@ -2,11 +2,9 @@ import unittest
 
 import numpy as np
 
-from src.function import Linear, Quadratic, SumSquares, TotalVariation
 from src.cones import SOC
 from src.constrained_min import InteriorPointSolver
-from src.image_denoising import load_image, show_image
-from skimage.transform import resize
+from src.function import Linear, Quadratic
 
 
 class TestUnconstrained(unittest.TestCase):

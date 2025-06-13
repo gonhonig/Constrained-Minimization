@@ -1,9 +1,11 @@
 import unittest
+import numpy as np
+from scipy import sparse
+from scipy.sparse import csr_matrix, lil_matrix
 
 from src.constrained_min import InteriorPointSolver
 from src.function import SumSquares, TotalVariation, Linear
 from src.image_denoising import load_image, show_image
-from src.phase_one import get_initial_point
 from src.cones import *
 
 
@@ -16,39 +18,102 @@ class TestImageDenoising(unittest.TestCase):
         offset = 100
         Y = load_image('noisy_img.jpg')[offset:offset + n, offset:offset + n]
         show_image(Y, "noisy")
-        ineq = []
 
         m, n = Y.shape
-        len_x = m*n + (m-1)*(n-1) + 1
+        num_pixels = m * n
 
-        for i in range(m-1):
-            for j in range(n-1):
-                A = np.zeros((len_x, len_x))
-                A[0, i*n + j] = 1
-                A[0, i*n + j + 1] = -1
-                A[1, i*n + j] = 1
-                A[1, (i+1)*n + j] = -1
-                c = np.zeros(len_x)
-                c[m*n + i*(n-1) + j] = 1
-                ineq.append(SOC(A=A, c=c))
+        # Optimized constraint construction
+        print("Building TV constraints...")
+        ineq = self._build_tv_constraints_optimized(m, n, num_pixels)
 
-        A = np.zeros(len_x)
-        b = np.zeros(len_x)
-        c = np.zeros(len_x)
-        A[:m*n] = 1
-        A = np.diag(A)
-        c[-1] = 1
-        b[:m*n] = Y.ravel()
-        ineq.append(SOC(A=A, c=c))
+        print("Building data fidelity constraint...")
+        # Data fidelity constraint: ||x - y||_2 <= t_data
+        t_data_idx = num_pixels + len(ineq)  # Last variable
+        len_x = t_data_idx + 1
 
-        tv = np.zeros(len_x)
-        tv[m*n:(m-1)*(n-1)] = 1
-        f = Linear(c) + 0.3 * Linear(tv)
+        A_data = sparse.eye(num_pixels, len_x, format='csr')
+        b_data = -Y.ravel()
+        c_data = np.zeros(len_x)
+        c_data[t_data_idx] = 1
+
+        ineq.append(SOC(A_data, b=b_data, c=c_data))
+
+        # Objective: minimize sum of TV variables + lambda * data_fidelity_variable
+        objective_coeffs = np.zeros(len_x)
+        objective_coeffs[num_pixels:t_data_idx] = 1  # TV variables
+        objective_coeffs[t_data_idx] = 0.3  # Data fidelity variable
+
+        f = Linear(objective_coeffs)
+
+        print(f"Total variables: {len_x}")
+        print(f"Total constraints: {len(ineq)}")
+        print("Solving...")
 
         result = self.Solver.solve(func=f, ineq_constraints=ineq, x0=len_x)
-        X = result['x'][:m*n].reshape((m,n))
+
+        X = result['x'][:num_pixels].reshape((m, n))
         show_image(X, "clean")
 
+    def _build_tv_constraints_optimized(self, m, n, num_pixels):
+        """Optimized TV constraint construction using vectorized operations"""
+        ineq = []
+        constraint_idx = 0
+
+        # Pre-allocate arrays for constraint indices
+        vertical_constraints = []
+        horizontal_constraints = []
+
+        # Collect all vertical difference constraints
+        for i in range(m - 1):
+            for j in range(n):
+                curr_pixel = i * n + j
+                next_pixel = (i + 1) * n + j
+                t_idx = num_pixels + constraint_idx
+
+                vertical_constraints.append((curr_pixel, next_pixel, t_idx))
+                constraint_idx += 1
+
+        # Collect all horizontal difference constraints
+        for i in range(m):
+            for j in range(n - 1):
+                curr_pixel = i * n + j
+                next_pixel = i * n + (j + 1)
+                t_idx = num_pixels + constraint_idx
+
+                horizontal_constraints.append((curr_pixel, next_pixel, t_idx))
+                constraint_idx += 1
+
+        total_vars = num_pixels + constraint_idx + 1  # +1 for data fidelity variable
+
+        # Build vertical constraints in batch
+        print(f"Building {len(vertical_constraints)} vertical constraints...")
+        for curr_pixel, next_pixel, t_idx in vertical_constraints:
+            # Use direct sparse matrix construction
+            row = np.array([0, 0])
+            col = np.array([curr_pixel, next_pixel])
+            data = np.array([-1.0, 1.0])
+
+            A = csr_matrix((data, (row, col)), shape=(1, total_vars))
+            c = np.zeros(total_vars)
+            c[t_idx] = 1.0
+
+            ineq.append(SOC(A, c=c))
+
+        # Build horizontal constraints in batch
+        print(f"Building {len(horizontal_constraints)} horizontal constraints...")
+        for curr_pixel, next_pixel, t_idx in horizontal_constraints:
+            # Use direct sparse matrix construction
+            row = np.array([0, 0])
+            col = np.array([curr_pixel, next_pixel])
+            data = np.array([-1.0, 1.0])
+
+            A = csr_matrix((data, (row, col)), shape=(1, total_vars))
+            c = np.zeros(total_vars)
+            c[t_idx] = 1.0
+
+            ineq.append(SOC(A, c=c))
+
+        return ineq
 
     @unittest.skip("Temporarily disabled")
     def test_image_denoising_TV(self):
@@ -56,11 +121,9 @@ class TestImageDenoising(unittest.TestCase):
         offset = 100
         noisy_image = load_image('noisy_img.jpg')[offset:offset + n, offset:offset + n]
         show_image(noisy_image, "noisy")
-        x0 = get_initial_point(noisy_image, method="median")
-
         f = TotalVariation(noisy_image.shape) + 0.3 * SumSquares(A=noisy_image)
-        result = self.Solver.solve(func=f, x0=x0)
-        show_image(result['x'], "clean")
+        result = self.Solver.solve(func=f, x0=noisy_image.size)
+        show_image(result['x'].reshape(noisy_image.shape), "clean")
 
 
 if __name__ == '__main__':

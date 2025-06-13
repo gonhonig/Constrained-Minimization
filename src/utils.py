@@ -106,15 +106,14 @@ def print_table(solvers):
 
 def parse_affine_vars(A, b = None, c = None, d = None):
     if A is not None:
-        A = np.asarray(A)
         if A.ndim == 1:
             A = A.reshape(1, -1)
 
-        b = np.asarray(b) if b is not None else (np.zeros(A.shape[0]) if A is not None else None)
+        b = b if b is not None else (np.zeros(A.shape[0]) if A is not None else None)
         if b.ndim == 0:
             b = np.expand_dims(b, 0)
 
-        c = np.asarray(c).reshape(b.shape) if c is not None else np.zeros_like(b)
+        c = c if c is not None else np.zeros_like(A.shape[1])
         d = d if d is not None else 0
 
     return A, b, c, d
