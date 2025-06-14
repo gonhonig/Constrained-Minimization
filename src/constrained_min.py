@@ -4,12 +4,11 @@ import numpy as np
 from tqdm import tqdm
 
 from src.function import Function, Linear
-from src.unconstrained_min import Solver
 from src.utils import parse_affine_vars
 
 
 class Newton:
-    def __init__(self, obj_tol = 1e-8, param_tol = 1e-12, wolfe_const = 0.01, backtracking_const = 0.5, A = None, b = None):
+    def __init__(self, obj_tol = 1e-8, param_tol = 1e-12, wolfe_const = 0.01, backtracking_const = 0.5, ineq_constraints: list[Function]=None, A=None, b=None):
         self.f = None
         self.obj_tol = obj_tol
         self.param_tol = param_tol
@@ -18,19 +17,27 @@ class Newton:
         self.history = None
         self.success = False
         self.is_valid = True
+        self.ineq_constraints = ineq_constraints
         self.A, self.b, _, _ = parse_affine_vars(A, b)
+        self.lhs = None
+        self.rhs = None
 
-    def backtrack_step_size(self, f: Function, x, p, extra_condition: Callable = None):
+        if self.A is not None and self.b is not None:
+            m, n = self.A.shape
+            self.lhs = np.block([[np.zeros((n, n)), self.A.T],
+                                 [self.A, np.zeros((m, m))]])
+            self.rhs = np.zeros(m+n)
+
+    def backtrack_step_size(self, f: Function, x, p):
         alpha = 1
         y, g, _ = f.eval(x)
         max_iter = 50
         min_step = 1e-12
-        extra_condition = extra_condition if extra_condition is not None else lambda c: True
 
         while alpha >= min_step and max_iter > 0:
             next_x = x + alpha * p
             y_next, _, _ = f.eval(next_x)
-            if y_next <= y + self.wolfe_const * alpha * g.T @ p and extra_condition(next_x):
+            if y_next <= y + self.wolfe_const * alpha * g.T @ p and check_feasibility(next_x, self.ineq_constraints, self.A, self.b):
                 break
             alpha *= self.backtracking_const
             max_iter -= 1
@@ -41,23 +48,19 @@ class Newton:
         if np.allclose(h, 0):
             return None
 
-        if self.A is None:
+        if self.lhs is None:
             try:
                 return np.linalg.solve(h, -g)
             except np.linalg.LinAlgError:
                 return np.linalg.lstsq(h, -g, rcond=None)[0]
 
-        n, m = self.A.shape
-        lhs = np.block([[h, self.A.T],
-                        [self.A, np.zeros((n, n))]])
-        rhs = np.concatenate((-g, np.zeros(n)))
 
-        try:
-            sol = np.linalg.solve(lhs, rhs)
-        except np.linalg.LinAlgError:
-            sol = np.linalg.lstsq(lhs, rhs, rcond=None)[0]
+        m, n = self.A.shape
+        self.lhs[:n, :n] = h
+        self.rhs[:n] = -g
+        sol = solve_linear_system(self.lhs, self.rhs)
 
-        return sol[:m]
+        return sol[:n]
 
     def should_terminate(self, x, x_next, y, g, h, p):
         return 0.5 * p.T @ h @ p < self.obj_tol
@@ -122,7 +125,7 @@ class InteriorPointSolver:
         m = len(ineq_constraints) if ineq_constraints else 0
         f = LogBarrierFunction(func, ineq_constraints)
         A, b, _, _ = parse_affine_vars(eq_constraints_mat, eq_constraints_rhs)
-        newton = Newton(A=A, b=b)
+        newton = Newton(ineq_constraints=ineq_constraints, A=A, b=b)
 
         if isinstance(x0, int):
             x = self.find_initial_point(x0, ineq_constraints, A, b)
@@ -141,7 +144,7 @@ class InteriorPointSolver:
             if verbose:
                 print(f"[Outer {i:>2}]: y: {y:.4f}, t: {t:d}")
 
-            if not self.feasibility_check(x, ineq_constraints, A, b):
+            if not check_feasibility(x, ineq_constraints, A, b):
                 print(f"Error: feasibility check failed.")
                 break
 
@@ -186,8 +189,7 @@ class InteriorPointSolver:
                 print(f"  [Inner {i}] Failed to find next newton step, stopping")
                 break
 
-            extra_condition = lambda c: self.feasibility_check(c, ineq_constraints, newton.A, newton.b)
-            alpha = newton.backtrack_step_size(f, x, p, extra_condition)
+            alpha = newton.backtrack_step_size(f, x, p)
             if alpha < 1e-16:
                 print(f"  [Inner {i}] Line search failed, stopping")
                 break
@@ -217,7 +219,7 @@ class InteriorPointSolver:
         if not ineq_constraints:
             return x0
 
-        if self.feasibility_check(x0, ineq_constraints, A, b):
+        if check_feasibility(x0, ineq_constraints, A, b):
             print("Initial point satisfies all constraints")
             return x0
 
@@ -248,13 +250,19 @@ class InteriorPointSolver:
 
         return result['x'][:-1]
 
-    @staticmethod
-    def feasibility_check(x, ineq_constraints, A, b):
-        if A is not None and not np.isclose(A @ x, b):
-            return False
 
-        if ineq_constraints:
-            constraint_values = np.array([ineq.eval(x)[0] for ineq in ineq_constraints])
-            return all(constraint_values < 0)
+def check_feasibility(x, ineq_constraints, A, b):
+    if A is not None and not np.isclose(A @ x, b):
+        return False
 
-        return True
+    if ineq_constraints:
+        constraint_values = np.array([ineq.eval(x)[0] for ineq in ineq_constraints])
+        return all(constraint_values < 0)
+
+    return True
+
+def solve_linear_system(lhs, rhs):
+    try:
+        return np.linalg.solve(lhs, rhs)
+    except np.linalg.LinAlgError:
+        return np.linalg.lstsq(lhs, rhs, rcond=None)[0]
