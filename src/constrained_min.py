@@ -71,53 +71,34 @@ class LogBarrierFunction(Function):
         self.t = 1
         self.x = None
 
-        # Cache for avoiding repeated evaluations
-        self._ineq_cache = [None] * len(ineq_constraints) if ineq_constraints else []
-
     def eval(self, x):
         y, g, h = self.f.eval(x)
 
         if self.ineq_constraints:
-            # Evaluate all constraints and cache results
-            ineq_evals = []
-            for i, ineq in enumerate(self.ineq_constraints):
-                eval_result = ineq.eval(x)
-                ineq_evals.append(eval_result)
-                self._ineq_cache[i] = eval_result
+            eval_ineq = [ineq.eval(x) for ineq in self.ineq_constraints]
+            y_ineq = np.array([eval[0] for eval in eval_ineq])
+            g_ineq = np.array([eval[1] for eval in eval_ineq])
+            h_ineq = np.array([eval[2] for eval in eval_ineq])
 
-            y_ineq = np.array([eval_result[0] for eval_result in ineq_evals])
-            g_ineq = np.array([eval_result[1] for eval_result in ineq_evals])
-            h_ineq = np.array([eval_result[2] for eval_result in ineq_evals])
-
-            # Check for constraint violations
             if np.any(y_ineq >= 0):
-                # Return large but finite values instead of inf
                 large_val = 1e10
                 return large_val, np.full_like(g, large_val), np.full_like(h, large_val)
 
-            # Compute barrier terms more efficiently
-            log_terms = np.log(-y_ineq)
-            inv_y_ineq = 1.0 / y_ineq
-            inv_y_ineq_sq = inv_y_ineq ** 2
-
-            # Vectorized barrier function computation
-            barrier_val = -np.sum(log_terms)
-
-            # Gradient: sum of g_i / (-y_i)
-            barrier_grad = np.sum(g_ineq * inv_y_ineq.reshape(-1, 1), axis=0)
-
-            # Hessian: sum of (g_i * g_i^T) / y_i^2 + h_i / (-y_i)
-            barrier_hess = np.zeros_like(h)
-            for i in range(len(ineq_evals)):
-                barrier_hess += (np.outer(g_ineq[i], g_ineq[i]) * inv_y_ineq_sq[i] +
-                                 h_ineq[i] * (-inv_y_ineq[i]))
-
-            # Combine original function with barrier
-            y = self.t * y + barrier_val
-            g = self.t * g + barrier_grad
-            h = self.t * h + barrier_hess
+            h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2)[:,None,None] + (h_ineq / -y_ineq[:,None,None])
+            y = self.t * y - np.sum(np.log(-y_ineq))
+            g = self.t * g + np.sum(g_ineq / -y_ineq[:,None], axis=0)
+            h = self.t * h + np.sum(h_ineq, axis=0)
 
         return y, g, h
+
+    def y(self, x):
+        return eval(x)[0]
+
+    def g(self, x):
+        return eval(x)[1]
+
+    def h(self, x):
+        return eval(x)[2]
 
     def set_t(self, t):
         self.t = t

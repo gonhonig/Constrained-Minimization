@@ -18,40 +18,24 @@ class SOC(Function):
             self.A = self.A.tocsr()
 
         self.m, self.n = self.A.shape
-
-        # Pre-compute A.T for efficiency
         self.A_T = self.A.T.tocsr()
-
-        # Numerical stability parameters
         self.eps = 1e-10
         self.min_norm = 1e-8
 
     def eval(self, x):
         x = np.asarray(x).ravel()
-
-        # Compute Ax + b efficiently
         quad_part = self.A.dot(x) + self.b
-
-        # Compute c^T x + d more efficiently
         linear_part = np.dot(self.c, x) + self.d
-
-        # Compute 2-norm with numerical stability
         norm_quad = np.linalg.norm(quad_part)
-
-        # SOC constraint: ||Ax + b||_2 <= c^T x + d
-        # We return f(x) = ||Ax + b||_2 - c^T x - d
         y = norm_quad - linear_part
 
-        # Handle near-zero norm case with better numerical stability
         if norm_quad < self.min_norm:
-            # Use regularized gradient
             reg_norm = np.sqrt(norm_quad ** 2 + self.eps ** 2)
             normalized_quad = quad_part / reg_norm
             grad_quad = self.A_T.dot(normalized_quad)
 
-            # Regularized Hessian
             if self.n < 1000:
-                # For small problems, compute dense hessian
+                # For small problems using dense hessian
                 AtA = self.A_T.dot(self.A).toarray() / reg_norm
 
                 # Regularized outer product correction
