@@ -101,7 +101,7 @@ class Add(Function):
 class Quadratic(Function):
     def __init__(self, Q, name = None):
         self.Q = np.asarray(Q)
-        super().__init__(name, Q.shape[0])
+        super().__init__(name, self.Q.shape[0])
 
     def eval(self, x):
         y =  x.T @ self.Q @ x
@@ -117,7 +117,7 @@ class Quadratic(Function):
 class Linear(Function):
     def __init__(self, a, name = None):
         self.a = np.asarray(a)
-        super().__init__(name, a.shape[0])
+        super().__init__(name, self.a.shape[0])
 
     def eval(self, x):
         y =  self.a @ x
