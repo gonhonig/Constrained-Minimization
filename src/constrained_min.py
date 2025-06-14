@@ -146,7 +146,7 @@ class InteriorPointSolver:
         if isinstance(x0, int):
             x = self.find_initial_point(x0, ineq_constraints, A, b)
         else:
-            x = x0.ravel()
+            x = np.asarray(x0).ravel()
 
         i = 1
         history = []

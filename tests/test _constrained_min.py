@@ -37,7 +37,7 @@ class TestUnconstrained(unittest.TestCase):
                                    ineq_constraints=ineq,
                                    eq_constraints_mat=A,
                                    eq_constraints_rhs=b,
-                                   x0=2)
+                                   x0=[0.2,0.8])
         print(f"x: {result['x']}")
 
 if __name__ == '__main__':
