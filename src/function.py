@@ -314,3 +314,31 @@ class TotalVariation(Function):
 
     def pad(self, pad_width, constant_values=0):
         return self
+
+
+class LinearConstraint(Function):
+    """Linear constraint: a^T x + b <= 0"""
+
+    def __init__(self, a, b=0, name=None):
+        self.a = np.asarray(a).ravel()
+        self.b = b if np.isscalar(b) else b.item()
+        super().__init__(name or "LinearConstraint", len(self.a))
+
+    def eval(self, x):
+        x = np.asarray(x).ravel()
+
+        # Constraint value: a^T x + b
+        y = np.dot(self.a, x) + self.b
+
+        # Gradient: a
+        g = self.a.copy()
+
+        # Hessian: 0 (linear function has zero second derivative)
+        h = np.zeros((self.dim, self.dim))
+
+        return y, g, h
+
+    def pad(self, pad_width, constant_values=0):
+        a_padded = np.pad(self.a, pad_width=pad_width,
+                          constant_values=constant_values, mode='constant')
+        return LinearConstraint(a_padded, self.b, self.name)
