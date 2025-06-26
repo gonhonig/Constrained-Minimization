@@ -1,10 +1,11 @@
-from typing import Sequence, Callable
+from typing import Callable
 
 import numpy as np
 from tqdm import tqdm
 
-from src.function import Function, Linear, LogBarrierFunction
+from src.function import Function, LogBarrierFunction
 from src.utils import parse_affine_vars
+
 
 class Newton:
     def __init__(self, obj_tol = 1e-8, param_tol = 1e-12, wolfe_const = 0.01, backtracking_const = 0.5, ineq_constraints: list[Function]=None, A=None, b=None):
@@ -154,9 +155,6 @@ class InteriorPointSolver:
             'history': history
         }
 
-    def set_variables_positions(self, variables):
-        if variables is None:
-            return 0
 
 def check_feasibility(x, ineq_constraints, A, b):
     if A is not None and not np.isclose(A @ x, b):
@@ -167,6 +165,7 @@ def check_feasibility(x, ineq_constraints, A, b):
         return all(constraint_values < 0)
 
     return True
+
 
 def solve_linear_system(lhs, rhs):
     try:
