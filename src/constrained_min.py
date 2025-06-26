@@ -1,117 +1,142 @@
+from typing import Sequence, Callable
+
 import numpy as np
+from tqdm import tqdm
 
-from src.function import Function, Linear
-from src.unconstrained_min import Solver
+from src.function import Function, Linear, LogBarrierFunction
 from src.utils import parse_affine_vars
-from src.variable import Variable
 
-
-class Newton(Solver):
-    def __init__(self, obj_tol = 1e-8, param_tol = 1e-12, wolfe_const = 0.01, backtracking_const = 0.5):
-        super().__init__(obj_tol, param_tol, wolfe_const, backtracking_const)
-        self.A = None
-        self.b = None
-
-    def solve(self, f: Function, x0, max_iter = 100, A = None, b = None, verbose = True):
+class Newton:
+    def __init__(self, obj_tol = 1e-8, param_tol = 1e-12, wolfe_const = 0.01, backtracking_const = 0.5, ineq_constraints: list[Function]=None, A=None, b=None):
+        self.f = None
+        self.obj_tol = obj_tol
+        self.param_tol = param_tol
+        self.wolfe_const = wolfe_const
+        self.backtracking_const = backtracking_const
+        self.history = None
+        self.success = False
+        self.is_valid = True
+        self.ineq_constraints = ineq_constraints
         self.A, self.b, _, _ = parse_affine_vars(A, b)
-        return super().solve(f, x0, max_iter, verbose)
+        self.lhs = None
+        self.rhs = None
 
-    def next_direction(self, x, y, g, h):
-        if np.all(h == 0):
+        if self.A is not None and self.b is not None:
+            m, n = self.A.shape
+            self.lhs = np.block([[np.zeros((n, n)), self.A.T],
+                                 [self.A, np.zeros((m, m))]])
+            self.rhs = np.zeros(m+n)
+
+    def backtrack_step_size(self, f: Function, x, p):
+        alpha = 1
+        y, g, _ = f.eval(x)
+        max_iter = 50
+        min_step = 1e-12
+
+        while alpha >= min_step and max_iter > 0:
+            next_x = x + alpha * p
+            y_next, _, _ = f.eval(next_x)
+            if y_next <= y + self.wolfe_const * alpha * g.T @ p and check_feasibility(next_x, self.ineq_constraints, self.A, self.b):
+                break
+            alpha *= self.backtracking_const
+            max_iter -= 1
+
+        return alpha
+
+    def next_direction(self, g, h):
+        if np.allclose(h, 0):
             return None
 
-        if self.A is None:
-            return np.linalg.solve(h, -g)
+        if self.lhs is None:
+            try:
+                return np.linalg.solve(h, -g)
+            except np.linalg.LinAlgError:
+                return np.linalg.lstsq(h, -g, rcond=None)[0]
 
-        n, m = self.A.shape
-        lhs = np.block([[h, self.A.T],
-                        [self.A, np.zeros((n, n))]])
-        rhs = np.concatenate((-g, np.zeros(n)))
 
-        return np.linalg.solve(lhs, rhs)[:m]
+        m, n = self.A.shape
+        self.lhs[:n, :n] = h
+        self.rhs[:n] = -g
+        sol = solve_linear_system(self.lhs, self.rhs)
 
-    def should_terminate(self, x, x_next, y, g, h, p):
+        return sol[:n]
+
+
+    def solve(self, f, x0, outer_iter, verbose):
+        """Newton solver for inner iterations"""
+        x = x0.copy()
+        max_inner_iter = 100
+
+        for i in tqdm(range(max_inner_iter), desc=f"[Inner {outer_iter:>2}]", disable=(not verbose)):
+            y, g, h = f.eval(x)
+
+            if np.linalg.norm(g) < 1e-8:
+                break
+
+            p = self.next_direction(g, h)
+            if p is None:
+                print(f"  [Inner {i}] Failed to find next newton step, stopping")
+                break
+
+            alpha = self.backtrack_step_size(f, x, p)
+            if alpha < 1e-16:
+                print(f"  [Inner {i}] Line search failed, stopping")
+                break
+
+            x_new = x + alpha * p
+
+            if np.linalg.norm(x_new - x) < 1e-12 or self.should_terminate(h, p):
+                x = x_new
+                break
+
+            x = x_new
+
+        return {'x': x}
+
+    def should_terminate(self, h, p):
         return 0.5 * p.T @ h @ p < self.obj_tol
 
 
-
-class LogBarrierFunction(Function):
-    def __init__(self, f: Function, ineq_constraints: list[Function]):
-        super().__init__(None, LogBarrierFunction.__name__, f.dim)
-        self.f = f
-        self.ineq_constraints = ineq_constraints
-        self.t = 1
-        self.x = None
-
-    def eval_impl(self, x):
-        y, g, h = self.f.eval(x)
-
-        if self.ineq_constraints:
-            eval_ineq = [ineq.eval(x) for ineq in self.ineq_constraints]
-            y_ineq = np.array([eval[0] for eval in eval_ineq])
-            try:
-                g_ineq = np.array([eval[1] for eval in eval_ineq])
-            except Exception as e:
-                pass
-            h_ineq = np.array([eval[2] for eval in eval_ineq])
-            h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2)[:,None,None] + (h_ineq / -y_ineq[:,None,None])
-            y = self.t * y - np.sum(np.log(-y_ineq))
-            g = self.t * g + np.sum(g_ineq / -y_ineq[:,None], axis=0)
-            h = self.t * h + np.sum(h_ineq, axis=0)
-
-        return y, g, h
-
-    def y(self, x):
-        return eval(x)[0]
-
-    def g(self, x):
-        return eval(x)[1]
-
-    def h(self, x):
-        return eval(x)[2]
-
-    def set_t(self, t):
-        self.t = t
-
-
 class InteriorPointSolver:
-    def __init__(self, mu = 10, epsilon = 1e-10):
+    def __init__(self, mu=10, epsilon=1e-10):
         self.mu = mu
         self.epsilon = epsilon
 
-    def solve(self, func: Function, x0 = None, ineq_constraints: list[Function] = None, eq_constraints_mat = None, eq_constraints_rhs = None, verbose = True, variables:list[Variable]=None):
+    def solve(self, func: Function, x0: np.ndarray, ineq_constraints: list[Function] = None,
+              eq_constraints_mat=None, eq_constraints_rhs=None, custom_break: Callable = None, verbose=True):
+        if verbose:
+            print("Interior point solver started")
+            print("+++++++++++++++++++++++++++++")
+
         t = 1
         m = len(ineq_constraints) if ineq_constraints else 0
         f = LogBarrierFunction(func, ineq_constraints)
-        newton = Newton()
-        A = eq_constraints_mat
-        b = eq_constraints_rhs
-        x = None
-        variables = variables if variables is not None else list(set(v for f in [func] + ineq_constraints for v in f.get_vars() if isinstance(v, Variable)))
+        A, b, _, _ = parse_affine_vars(eq_constraints_mat, eq_constraints_rhs)
+        newton = Newton(ineq_constraints=ineq_constraints, A=A, b=b)
+        x = np.asarray(x0)
 
-        if x0 is not None:
-            x = x0
-            x0_len = self.set_variables_positions(variables)
-            # if len(x0) != x0_len:
-            #     raise ValueError("x0 must match the shape of the sum of all variables")
-        elif variables is not None:
-            x = self.find_x0(variables, ineq_constraints, A, b)
-
-        x = x.ravel()
         i = 1
         history = []
         if verbose:
-            print("Solving using interior point method")
+            print()
 
         while i == 1 or m / t >= self.epsilon:
             f.set_t(t)
             y, _, _ = func.eval(x)
             history.append(np.append(x, y))
             if verbose:
-                print(f"[{i}] y: {y}")
-            x_new = newton.solve(f=f, x0=x, A=A, b=b, verbose=False)['x']
-            if np.linalg.norm(x_new - x) < 1e-12:
+                print(f"[Outer {i:>2}]: y: {y:.4f}, t: {t:d}")
+
+            if not check_feasibility(x, ineq_constraints, A, b):
+                print(f"Error: feasibility check failed.")
                 break
+
+            result = newton.solve(f, x, i, verbose=verbose)
+            x_new = result['x']
+
+            if np.linalg.norm(x_new - x) < 1e-12 or (custom_break is not None and custom_break(x)):
+                break
+
             x = x_new
             t *= self.mu
             i += 1
@@ -119,11 +144,12 @@ class InteriorPointSolver:
         y, _, _ = func.eval(x)
         history.append(np.append(x, y))
         if verbose:
-            print()
+            print(f"Done! y: {y:.4f}")
+            print("+++++++++++++++++++++++++++++")
 
         return {
             'x': x,
-            'f': y,
+            'y': y,
             'iterations': i,
             'history': history
         }
@@ -132,32 +158,18 @@ class InteriorPointSolver:
         if variables is None:
             return 0
 
-        length = 0
-        for variable in variables:
-            if not isinstance(variable, Variable):
-                continue
-            variable.pos = length
-            length += len(variable)
-        return length
+def check_feasibility(x, ineq_constraints, A, b):
+    if A is not None and not np.isclose(A @ x, b):
+        return False
 
-    def find_x0(self, variables, ineq_constraints, A, b):
-        length = self.set_variables_positions(variables)
-        A, b, _, _ = parse_affine_vars(A, b)
+    if ineq_constraints:
+        constraint_values = np.array([ineq.eval(x)[0] for ineq in ineq_constraints])
+        return all(constraint_values < 0)
 
-        if A is None:
-            x0 = np.random.rand(length)
-        else:
-            x0, residuals, rank, s = np.linalg.lstsq(A, b, rcond=None)
+    return True
 
-        max_violation = np.max([ineq.eval(x0)[0] for ineq in ineq_constraints])
-        x0 = np.append(x0, max_violation + 1)
-
-        s = Variable(1)
-        f = Linear([1], s)
-
-        result = self.solve(func=f, x0=x0, ineq_constraints=ineq_constraints, eq_constraints_mat=A, eq_constraints_rhs=b, verbose=False, variables=variables+[s])
-
-        return result['x'][:-1]
-
-
-
+def solve_linear_system(lhs, rhs):
+    try:
+        return np.linalg.solve(lhs, rhs)
+    except np.linalg.LinAlgError:
+        return np.linalg.lstsq(lhs, rhs, rcond=None)[0]

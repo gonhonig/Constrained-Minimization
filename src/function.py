@@ -1,36 +1,16 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod, ABC
 
 import numpy as np
 
-from src.variable import Variable
-
 
 class Function(ABC):
-    def __init__(self, variable: Variable | None = None, name = None, dim = 1):
+    def __init__(self, dim, name = None):
         self.name = name if name else self.__class__.__name__
         self.dim = dim
-        self.variable = variable
-
-    def eval(self, x):
-        n = x.shape[0]
-        if self.variable is None:
-            return self.eval_impl(x)
-
-        y, g, h = self.eval_impl(self.variable(x))
-
-        aligned_g = np.zeros(n)
-        aligned_h = np.zeros((n,n))
-        g = self.variable.align_g(g, aligned_g)
-        h = self.variable.align_h(h, aligned_h)
-
-        return y, g, h
 
     @abstractmethod
-    def eval_impl(self, x):
+    def eval(self, x):
         pass
-
-    def get_vars(self):
-        return [self.variable] if self.variable is not None else []
 
     def __add__(self, o):
         other = o if isinstance(o, Function) else Const(o)
@@ -58,63 +38,54 @@ class Function(ABC):
 
 class Const(Function):
     def __init__(self, value):
-        super().__init__()
+        if not np.isscalar(value):
+            raise TypeError("Const can only be scalar")
+        super().__init__(1)
         self.value = value
 
-    def eval_impl(self, x):
+    def eval(self, x):
         return self.value, 0, 0
 
 
 class Neg(Function):
     def __init__(self, base: Function):
-        super().__init__()
+        super().__init__(base.dim)
         self.base = base
 
-    def eval_impl(self, x):
+    def eval(self, x):
         y,g,h = self.base.eval(x)
         return -y, -g, -h
-
-    def get_vars(self):
-        return self.base.get_vars()
 
 
 class Mul(Function):
     def __init__(self, base: Function, scalar):
-        super().__init__()
+        super().__init__(base.dim)
         self.base = base
         self.scalar = scalar
 
-    def eval_impl(self, x):
+    def eval(self, x):
         y,g,h = self.base.eval(x)
         return self.scalar * y, self.scalar * g, self.scalar * h
-
-    def get_vars(self):
-        return self.base.get_vars()
 
 
 class Add(Function):
     def __init__(self, a: Function, b: Function):
-        super().__init__(name=f"{a.name} + {b.name}", dim=max(a.dim, b.dim))
+        super().__init__(max(a.dim, b.dim), f"{a.name} + {b.name}")
         self.a = a
         self.b = b
 
-    def eval_impl(self, x):
+    def eval(self, x):
         ay, ag, ah = self.a.eval(x)
         by, bg, bh = self.b.eval(x)
         return ay + by, ag + bg, ah + bh
 
-    def get_vars(self):
-        return self.a.get_vars() + self.b.get_vars()
-
 
 class Quadratic(Function):
-    def __init__(self, Q, variable: Variable | None = None, name = None):
-        Q = np.asarray(Q)
-        super().__init__(variable, name, Q.shape[0])
+    def __init__(self, Q):
         self.Q = np.asarray(Q)
+        super().__init__(self.Q.shape[0])
 
-    def eval_impl(self, x):
-        x = np.asarray(x)
+    def eval(self, x):
         y =  x.T @ self.Q @ x
         g = 2 * self.Q @ x
         h = 2 * self.Q
@@ -122,190 +93,54 @@ class Quadratic(Function):
 
 
 class Linear(Function):
-    def __init__(self, a, variable: Variable | None = None, name = None):
-        a = np.asarray(a)
-        super().__init__(variable, name, a.shape[0])
+    def __init__(self, a):
         self.a = np.asarray(a)
+        super().__init__(self.a.shape[0])
 
-    def eval_impl(self, x):
-        x = np.asarray(x)
+    def eval(self, x):
         y =  self.a @ x
         g = self.a
         h = np.zeros((self.dim, self.dim))
         return y, g, h
 
 
-class SumSquares(Function):
-    def __init__(self, variable: Variable | None = None, A = None):
-        super().__init__(variable, dim=2)
-        self.A = np.asarray(A).ravel() if A is not None else None
+class LogBarrierFunction(Function):
+    def __init__(self, f: Function, ineq_constraints: list[Function]):
+        super().__init__(f.dim)
+        self.f = f
+        self.ineq_constraints = ineq_constraints
+        self.t = 1
+        self.x = None
 
-    def eval_impl(self, x):
-        x = np.asarray(x)
-        shape = x.shape
-        x = x.ravel()
-        x = x - (self.A if self.A is not None else 0)
-        y = x.T @ x
-        g = 2 * x
-        g = g.reshape(shape)
-        h = 2 * np.eye(x.shape[0])
+    def eval(self, x):
+        y, g, h = self.f.eval(x)
+
+        if self.ineq_constraints:
+            eval_ineq = [ineq.eval(x) for ineq in self.ineq_constraints]
+            y_ineq = np.array([eval[0] for eval in eval_ineq])
+            g_ineq = np.array([eval[1] for eval in eval_ineq])
+            h_ineq = np.array([eval[2] for eval in eval_ineq])
+
+            if np.any(y_ineq >= 0):
+                large_val = 1e10
+                return large_val, np.full_like(g, large_val), np.full_like(h, large_val)
+
+            h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2)[:,None,None] + (h_ineq / -y_ineq[:,None,None])
+            y = self.t * y - np.sum(np.log(-y_ineq))
+            g = self.t * g + np.sum(g_ineq / -y_ineq[:,None], axis=0)
+            h = self.t * h + np.sum(h_ineq, axis=0)
 
         return y, g, h
 
+    def y(self, x):
+        return eval(x)[0]
 
-class TotalVariation(Function):
-    def __init__(self, shape):
-        super().__init__(dim=2)
-        self.epsilon = 1e-8
-        self.shape = shape
+    def g(self, x):
+        return eval(x)[1]
 
-    def eval_impl(self, x):
-        X = np.asarray(x).reshape(self.shape)
-        m, n = X.shape
+    def h(self, x):
+        return eval(x)[2]
 
-        # Forward differences
-        Dx = X[1:, :] - X[:-1, :]  # shape: (m-1, n)
-        Dy = X[:, 1:] - X[:, :-1]  # shape: (m, n-1)
+    def set_t(self, t):
+        self.t = t
 
-        # Pad to make same size for norm computation
-        Dx_padded = np.zeros((m, n))
-        Dx_padded[:-1, :] = Dx
-
-        Dy_padded = np.zeros((m, n))
-        Dy_padded[:, :-1] = Dy
-
-        # Stack and compute norms
-        Dxy = np.stack((Dx_padded, Dy_padded))  # shape: (2, m, n)
-
-        epsilon = 1e-8
-        norm = np.linalg.norm(Dxy, axis=0) + epsilon  # shape: (m, n)
-        y = np.sum(norm)  # TV value
-
-        # === GRADIENT COMPUTATION ===
-        # d/dx_ij of ||∇f||_2 = (∇f) / ||∇f||_2
-        # Each pixel contributes to up to 4 norm terms
-
-        grad = np.zeros((m, n))
-
-        # Contribution from being the "center" pixel in forward differences
-        # For norm at (i,j): contributes Dx_padded[i,j]/norm[i,j] and Dy_padded[i,j]/norm[i,j]
-        grad += Dx_padded / norm  # contribution as x difference
-        grad += Dy_padded / norm  # contribution as y difference
-
-        # Contribution from being the "previous" pixel in x direction
-        # For norm at (i+1,j): contributes -Dx_padded[i+1,j]/norm[i+1,j]
-        grad[:-1, :] -= Dx_padded[1:, :] / norm[1:, :]
-
-        # Contribution from being the "previous" pixel in y direction
-        # For norm at (i,j+1): contributes -Dy_padded[i,j+1]/norm[i,j+1]
-        grad[:, :-1] -= Dy_padded[:, 1:] / norm[:, 1:]
-        grad = grad.ravel()
-
-        # === HESSIAN COMPUTATION ===
-        # This is more complex due to the 1/||∇f|| terms
-        # H_ij,kl = ∂²TV/∂x_ij∂x_kl
-
-        # For efficiency, we'll compute the Hessian sparsely
-        # The Hessian has a specific sparsity pattern due to the local nature of TV
-
-        total_pixels = m * n
-        H = np.zeros((total_pixels, total_pixels))
-
-        def idx(i, j):
-            """Convert 2D indices to 1D index"""
-            return i * n + j
-
-        for i in range(m):
-            for j in range(n):
-                curr_idx = idx(i, j)
-                norm_val = norm[i, j]
-
-                # Self-interaction terms
-                # From d²/dx² of norms involving this pixel
-
-                # Diagonal term from all norms this pixel participates in
-                diag_val = 0.0
-
-                # From norm at (i,j) - pixel appears in both Dx and Dy
-                if i < m - 1 or j < n - 1:  # if this pixel contributes to any norm
-                    # Second derivative of sqrt(Dx² + Dy²) w.r.t. pixel value
-                    Dx_val = Dx_padded[i, j]
-                    Dy_val = Dy_padded[i, j]
-
-                    # d²/dx² of sqrt(Dx² + Dy²) = Dy²/(Dx² + Dy²)^(3/2)
-                    diag_val += (Dy_val ** 2) / (norm_val ** 3)
-                    diag_val += (Dx_val ** 2) / (norm_val ** 3)
-
-                # From norm at (i-1,j) if exists
-                if i > 0:
-                    prev_norm = norm[i - 1, j]
-                    Dx_prev = Dx_padded[i - 1, j]
-                    Dy_prev = Dy_padded[i - 1, j]
-                    diag_val += (Dy_prev ** 2) / (prev_norm ** 3)
-
-                    # Cross term with (i-1,j)
-                    if Dx_prev != 0:
-                        cross_val = -(Dx_prev * Dy_prev) / (prev_norm ** 3)
-                        H[curr_idx, idx(i - 1, j)] += cross_val
-                        H[idx(i - 1, j), curr_idx] += cross_val
-
-                # From norm at (i,j-1) if exists
-                if j > 0:
-                    prev_norm = norm[i, j - 1]
-                    Dx_prev = Dx_padded[i, j - 1]
-                    Dy_prev = Dy_padded[i, j - 1]
-                    diag_val += (Dx_prev ** 2) / (prev_norm ** 3)
-
-                    # Cross term with (i,j-1)
-                    if Dy_prev != 0:
-                        cross_val = -(Dx_prev * Dy_prev) / (prev_norm ** 3)
-                        H[curr_idx, idx(i, j - 1)] += cross_val
-                        H[idx(i, j - 1), curr_idx] += cross_val
-
-                H[curr_idx, curr_idx] = diag_val
-
-                # Off-diagonal terms for neighboring pixels
-                # Interaction with right neighbor
-                if j < n - 1:
-                    neighbor_idx = idx(i, j + 1)
-                    # Both pixels contribute to norm at (i,j)
-                    cross_val = -(Dx_padded[i, j] * Dy_padded[i, j]) / (norm_val ** 3)
-                    H[curr_idx, neighbor_idx] += cross_val
-                    H[neighbor_idx, curr_idx] += cross_val
-
-                # Interaction with bottom neighbor
-                if i < m - 1:
-                    neighbor_idx = idx(i + 1, j)
-                    # Both pixels contribute to norm at (i,j)
-                    cross_val = -(Dx_padded[i, j] * Dy_padded[i, j]) / (norm_val ** 3)
-                    H[curr_idx, neighbor_idx] += cross_val
-                    H[neighbor_idx, curr_idx] += cross_val
-
-        return y, grad, H
-
-    def calc_grad(self, X):
-        n, m = X.shape
-        grad = np.zeros_like(X)
-
-        Dx = np.zeros_like(X)
-        Dy = np.zeros_like(X)
-
-        Dx[:-1, :] = X[1:, :] - X[:-1, :]
-        Dy[:, :-1] = X[:, 1:] - X[:, :-1]
-
-        # Compute magnitude
-        mag = np.sqrt(Dx ** 2 + Dy ** 2 + self.epsilon)
-
-        # Gradients w.r.t. Dx
-        Dx_grad = Dx / mag
-        Dy_grad = Dy / mag
-
-        # Backprop Dx
-        grad[:-1, :] -= Dx_grad[:-1, :]
-        grad[1:, :] += Dx_grad[:-1, :]
-
-        # Backprop Dy
-        grad[:, :-1] -= Dy_grad[:, :-1]
-        grad[:, 1:] += Dy_grad[:, :-1]
-
-        return grad

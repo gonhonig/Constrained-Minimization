@@ -1,5 +1,7 @@
 from abc import abstractmethod, ABC
 import numpy as np
+from tqdm import tqdm
+
 from src.function import Function
 
 
@@ -13,9 +15,9 @@ class Solver(ABC):
         self.history = None
         self.success = False
         self.is_valid = True
+        self.name = self.__class__.__name__
 
     def solve(self, f: Function, x0, max_iter = 100, verbose = True):
-        name = self.__class__.__name__
         self.history = []
         self.f = f
         i = 0
@@ -25,14 +27,14 @@ class Solver(ABC):
         self.is_valid = True
 
         if verbose:
-            print(f"\nSolving {f.name} using {name} solver...")
+            print(f"\nSolving {f.name} using {self.name} solver...")
 
-        while i <= max_iter:
+        for i in tqdm(range(max_iter), desc=f"[{self.name}]"):
             y, g, h = self.f.eval(x)
 
             self.history.append(np.append(x, y))
             if verbose:
-                print(f"[{name}:{i}] x: {x}, y: {y}")
+                print(f"[{self.name}:{i}] x: {x}, y: {y}")
 
             if self.success:
                 break
@@ -60,7 +62,7 @@ class Solver(ABC):
         i -= 0 if self.success else 1
 
         return {
-            'name': name,
+            'name': self.name,
             'iterations': i,
             'x': x,
             'y': y,

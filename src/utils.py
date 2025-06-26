@@ -1,3 +1,4 @@
+import numbers
 import os
 import matplotlib.pyplot as plt
 import numpy as np
@@ -105,16 +106,28 @@ def print_table(solvers):
 
 
 def parse_affine_vars(A, b = None, c = None, d = None):
-    if A is not None:
+    if A is None:
+        return None, None, None, None
+
+    if isinstance(A, list):
         A = np.asarray(A)
-        if A.ndim == 1:
-            A = A.reshape(1, -1)
+    if A.ndim == 1:
+        A = A.reshape(1, -1)
 
-        b = np.asarray(b) if b is not None else (np.zeros(A.shape[0]) if A is not None else None)
-        if b.ndim == 0:
-            b = np.expand_dims(b, 0)
+    if b is None:
+        b = np.zeros(A.shape[0])
+    elif isinstance(b, (list, numbers.Number)):
+        b = np.asarray(b)
+    if b.ndim == 0:
+        b = np.expand_dims(b, 0)
 
-        c = np.asarray(c).reshape(b.shape) if c is not None else np.zeros_like(b)
-        d = d if d is not None else 0
+    if c is None:
+        c = np.zeros(A.shape[1])
+    elif isinstance(c, list):
+        c = np.asarray(c)
+    if c.ndim == 0:
+        c = np.expand_dims(c, 0)
+
+    d = d or 0
 
     return A, b, c, d
