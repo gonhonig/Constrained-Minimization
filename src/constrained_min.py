@@ -104,13 +104,14 @@ class InteriorPointSolver:
         self.epsilon = epsilon
 
     def solve(self, func: Function, x0: np.ndarray, ineq_constraints: list[Function] = None,
-              eq_constraints_mat=None, eq_constraints_rhs=None, custom_break: Callable = None, verbose=True):
+              eq_constraints_mat=None, eq_constraints_rhs=None, mode="min", verbose=True):
         if verbose:
             print("Interior point solver started")
             print("+++++++++++++++++++++++++++++")
 
         t = 1
         m = len(ineq_constraints) if ineq_constraints else 0
+        func = -func if mode == "max" else func
         f = LogBarrierFunction(func, ineq_constraints)
         A, b, _, _ = parse_affine_vars(eq_constraints_mat, eq_constraints_rhs)
         newton = Newton(ineq_constraints=ineq_constraints, A=A, b=b)
@@ -124,6 +125,7 @@ class InteriorPointSolver:
         while i == 1 or m / t >= self.epsilon:
             f.set_t(t)
             y, _, _ = func.eval(x)
+            y = -y if mode == "max" else y
             history.append(np.append(x, y))
             if verbose:
                 print(f"[Outer {i:>2}]: y: {y:.4f}, t: {t:d}")
@@ -135,7 +137,7 @@ class InteriorPointSolver:
             result = newton.solve(f, x, i, verbose=verbose)
             x_new = result['x']
 
-            if np.linalg.norm(x_new - x) < 1e-12 or (custom_break is not None and custom_break(x)):
+            if np.linalg.norm(x_new - x) < 1e-12:
                 break
 
             x = x_new
@@ -143,6 +145,7 @@ class InteriorPointSolver:
             i += 1
 
         y, _, _ = func.eval(x)
+        y = -y if mode == "max" else y
         history.append(np.append(x, y))
         if verbose:
             print(f"Done! y: {y:.4f}")
