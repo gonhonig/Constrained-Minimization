@@ -3,9 +3,8 @@ from typing import Sequence, Callable
 import numpy as np
 from tqdm import tqdm
 
-from src.function import Function, Linear
+from src.function import Function, Linear, LogBarrierFunction
 from src.utils import parse_affine_vars
-
 
 class Newton:
     def __init__(self, obj_tol = 1e-8, param_tol = 1e-12, wolfe_const = 0.01, backtracking_const = 0.5, ineq_constraints: list[Function]=None, A=None, b=None):
@@ -44,7 +43,7 @@ class Newton:
 
         return alpha
 
-    def next_direction(self, x, y, g, h):
+    def next_direction(self, g, h):
         if np.allclose(h, 0):
             return None
 
@@ -62,52 +61,40 @@ class Newton:
 
         return sol[:n]
 
-    def should_terminate(self, x, x_next, y, g, h, p):
+
+    def solve(self, f, x0, outer_iter, verbose):
+        """Newton solver for inner iterations"""
+        x = x0.copy()
+        max_inner_iter = 100
+
+        for i in tqdm(range(max_inner_iter), desc=f"[Inner {outer_iter:>2}]", disable=(not verbose)):
+            y, g, h = f.eval(x)
+
+            if np.linalg.norm(g) < 1e-8:
+                break
+
+            p = self.next_direction(g, h)
+            if p is None:
+                print(f"  [Inner {i}] Failed to find next newton step, stopping")
+                break
+
+            alpha = self.backtrack_step_size(f, x, p)
+            if alpha < 1e-16:
+                print(f"  [Inner {i}] Line search failed, stopping")
+                break
+
+            x_new = x + alpha * p
+
+            if np.linalg.norm(x_new - x) < 1e-12 or self.should_terminate(h, p):
+                x = x_new
+                break
+
+            x = x_new
+
+        return {'x': x}
+
+    def should_terminate(self, h, p):
         return 0.5 * p.T @ h @ p < self.obj_tol
-
-
-class LogBarrierFunction(Function):
-    def __init__(self, f: Function, ineq_constraints: list[Function]):
-        super().__init__(LogBarrierFunction.__name__, f.dim)
-        self.f = f
-        self.ineq_constraints = ineq_constraints
-        self.t = 1
-        self.x = None
-
-    def eval(self, x):
-        y, g, h = self.f.eval(x)
-
-        if self.ineq_constraints:
-            eval_ineq = [ineq.eval(x) for ineq in self.ineq_constraints]
-            y_ineq = np.array([eval[0] for eval in eval_ineq])
-            g_ineq = np.array([eval[1] for eval in eval_ineq])
-            h_ineq = np.array([eval[2] for eval in eval_ineq])
-
-            if np.any(y_ineq >= 0):
-                large_val = 1e10
-                return large_val, np.full_like(g, large_val), np.full_like(h, large_val)
-
-            h_ineq = np.array([np.outer(g_i, g_i) for g_i in g_ineq]) / (y_ineq ** 2)[:,None,None] + (h_ineq / -y_ineq[:,None,None])
-            y = self.t * y - np.sum(np.log(-y_ineq))
-            g = self.t * g + np.sum(g_ineq / -y_ineq[:,None], axis=0)
-            h = self.t * h + np.sum(h_ineq, axis=0)
-
-        return y, g, h
-
-    def y(self, x):
-        return eval(x)[0]
-
-    def g(self, x):
-        return eval(x)[1]
-
-    def h(self, x):
-        return eval(x)[2]
-
-    def set_t(self, t):
-        self.t = t
-
-    def pad(self, pad_width, constant_values=0):
-        return self
 
 
 class InteriorPointSolver:
@@ -115,7 +102,7 @@ class InteriorPointSolver:
         self.mu = mu
         self.epsilon = epsilon
 
-    def solve(self, func: Function, x0: int | Sequence | np.ndarray, ineq_constraints: list[Function] = None,
+    def solve(self, func: Function, x0: np.ndarray, ineq_constraints: list[Function] = None,
               eq_constraints_mat=None, eq_constraints_rhs=None, custom_break: Callable = None, verbose=True):
         if verbose:
             print("Interior point solver started")
@@ -126,11 +113,7 @@ class InteriorPointSolver:
         f = LogBarrierFunction(func, ineq_constraints)
         A, b, _, _ = parse_affine_vars(eq_constraints_mat, eq_constraints_rhs)
         newton = Newton(ineq_constraints=ineq_constraints, A=A, b=b)
-
-        if isinstance(x0, int):
-            x = self.find_initial_point(x0, ineq_constraints, A, b)
-        else:
-            x = np.asarray(x0).ravel()
+        x = np.asarray(x0)
 
         i = 1
         history = []
@@ -148,11 +131,9 @@ class InteriorPointSolver:
                 print(f"Error: feasibility check failed.")
                 break
 
-            result = self.solve_inner(f, x, ineq_constraints, newton, i, verbose=verbose)
+            result = newton.solve(f, x, i, verbose=verbose)
             x_new = result['x']
 
-            if verbose:
-                print()
             if np.linalg.norm(x_new - x) < 1e-12 or (custom_break is not None and custom_break(x)):
                 break
 
@@ -172,83 +153,6 @@ class InteriorPointSolver:
             'iterations': i,
             'history': history
         }
-
-    def solve_inner(self, f, x0, ineq_constraints, newton, outer_iter, verbose):
-        """Newton solver for inner iterations"""
-        x = x0.copy()
-        max_inner_iter = 100
-
-        for i in tqdm(range(max_inner_iter), desc=f"[Inner {outer_iter:>2}]", disable=not verbose):
-            y, g, h = f.eval(x)
-
-            if np.linalg.norm(g) < 1e-8:
-                break
-
-            p = newton.next_direction(x, y, g, h)
-            if p is None:
-                print(f"  [Inner {i}] Failed to find next newton step, stopping")
-                break
-
-            alpha = newton.backtrack_step_size(f, x, p)
-            if alpha < 1e-16:
-                print(f"  [Inner {i}] Line search failed, stopping")
-                break
-
-            x_new = x + alpha * p
-
-            if np.linalg.norm(x_new - x) < 1e-12 or newton.should_terminate(x, x_new, y, g, h, p):
-                x = x_new
-                break
-
-            x = x_new
-
-        return {'x': x}
-
-    def find_initial_point(self, length, ineq_constraints, A, b):
-        print("\nFinding initial point")
-
-        if A is None:
-            x0 = np.ones(length) * 0.5
-        else:
-            x0 = np.linalg.lstsq(A, b, rcond=None)[0]
-            if x0.size < length:
-                pad_value = 0.1
-                x0 = np.pad(x0, (0, length - x0.size), constant_values=pad_value)
-            x0 = np.array([2, -1])
-
-        if not ineq_constraints:
-            return x0
-
-        if check_feasibility(x0, ineq_constraints, A, b):
-            print("Initial point satisfies all constraints")
-            return x0
-
-        print("Finding feasible initial point using phase-1 method...")
-
-        constraint_values = np.array([ineq.eval(x0)[0] for ineq in ineq_constraints])
-        max_violation = max(0, max(constraint_values))
-        x0_extended = np.append(x0, max_violation + 1.0)
-        s = np.zeros(length + 1)
-        s[-1] = 1
-        f = Linear(s)
-        ineq_constraints_with_s = [constraint.pad((0, 1)) - f for constraint in ineq_constraints]
-        A_extended = np.pad(A, ((0, 0), (0, 1)), 'constant') if A is not None else None
-        custom_break = lambda x: x[-1] < 1e-6
-
-        result = self.solve(func=f, x0=x0_extended,
-                            ineq_constraints=ineq_constraints_with_s,
-                            eq_constraints_mat=A_extended,
-                            eq_constraints_rhs=b,
-                            custom_break=custom_break,
-                            verbose=False)
-
-        s_val = result['x'][-1]
-
-        if s_val > 1e-6:
-            raise ValueError(f"The problem is infeasible (slack = {s_val})")
-        print("Initial point found")
-
-        return result['x'][:-1]
 
 
 def check_feasibility(x, ineq_constraints, A, b):
