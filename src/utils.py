@@ -118,7 +118,7 @@ def show_function(f, ineq_constraints, A=None, b=None, path = None, limits=None)
 
 def print_table(results, ineq_constraints = None, A = None, b = None):
     headers = ["Iterations", "x", "y"]
-    rows = [len(results['history']), results['x'], f"{results['y']:.3f}"]
+    rows = [len(results['history'])-1, results['x'], f"{results['y']:.3f}"]
     if ineq_constraints is not None:
         headers += [f"{constraint} ≤ 0" for constraint in ineq_constraints]
         rows += [f"{constraint.eval(results['x'])[0]:.3f}" for constraint in ineq_constraints]
