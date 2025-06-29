@@ -4,8 +4,9 @@ from src.function import Linear, Quadratic
 
 
 def get_qp_params():
-    ineq = [Linear(row) for row in -np.eye(3)]
+    ineq = [Linear(row) for row in -np.eye(3, dtype=int)]
     f = Quadratic(np.eye(3)) + Linear([0, 0, 2]) + 1
+    f.name = 'Quadratic'
     x0 = np.array([0.1, 0.2, 0.7])
     A = [1, 1, 1]
     b = 1

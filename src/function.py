@@ -18,7 +18,7 @@ class Function(ABC):
 
     def __sub__(self, o):
         other = o if isinstance(o, Function) else Const(o)
-        return Add(self, Neg(other))
+        return Subtract(self, other)
 
     def __neg__(self):
         return Neg(self)
@@ -46,6 +46,9 @@ class Const(Function):
     def eval(self, x):
         return self.value, 0, 0
 
+    def __str__(self):
+        return f"{self.value}"
+
 
 class Neg(Function):
     def __init__(self, base: Function):
@@ -55,6 +58,9 @@ class Neg(Function):
     def eval(self, x):
         y,g,h = self.base.eval(x)
         return -y, -g, -h
+
+    def __str__(self):
+        return f"-{self.base}"
 
 
 class Mul(Function):
@@ -67,6 +73,9 @@ class Mul(Function):
         y,g,h = self.base.eval(x)
         return self.scalar * y, self.scalar * g, self.scalar * h
 
+    def __str__(self):
+        return f"{self.scalar}{self.base}"
+
 
 class Add(Function):
     def __init__(self, a: Function, b: Function):
@@ -78,6 +87,24 @@ class Add(Function):
         ay, ag, ah = self.a.eval(x)
         by, bg, bh = self.b.eval(x)
         return ay + by, ag + bg, ah + bh
+
+    def __str__(self):
+        return f"{self.a} + {self.b}"
+
+
+class Subtract(Function):
+    def __init__(self, a: Function, b: Function):
+        super().__init__(max(a.dim, b.dim), f"{a.name} - {b.name}")
+        self.a = a
+        self.b = b
+
+    def eval(self, x):
+        ay, ag, ah = self.a.eval(x)
+        by, bg, bh = self.b.eval(x)
+        return ay - by, ag - bg, ah - bh
+
+    def __str__(self):
+        return f"{self.a} - {self.b}"
 
 
 class Quadratic(Function):
@@ -102,6 +129,9 @@ class Linear(Function):
         g = self.a
         h = np.zeros((self.dim, self.dim))
         return y, g, h
+
+    def __str__(self):
+        return f"{self.a}x"
 
 
 class LogBarrierFunction(Function):
